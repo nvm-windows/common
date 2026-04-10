@@ -1,0 +1,9 @@
+.*
+_*
+bin
+!.gitignore
+!.gitattributes
+!.github
+!.github/**
+*.exe
+*.dll
