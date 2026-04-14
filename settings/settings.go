@@ -455,3 +455,32 @@ func parseBoolInput(value interface{}) (bool, error) {
 		return false, fmt.Errorf("invalid bool input type")
 	}
 }
+
+func Values(includeHidden ...bool) (map[string]interface{}, error) {
+	showHidden := false
+	if len(includeHidden) > 0 {
+		showHidden = includeHidden[0]
+	}
+
+	s := Global()
+	t := reflect.TypeOf(s)
+	v := reflect.ValueOf(s)
+
+	values := make(map[string]interface{}, t.NumField())
+	for i := 0; i < t.NumField(); i++ {
+		field := t.Field(i)
+		key := field.Tag.Get("reg")
+		if key == "" {
+			continue
+		}
+
+		hide := field.Tag.Get("hidden") == "true"
+		if hide && !showHidden {
+			continue
+		}
+
+		values[key] = v.Field(i).Interface()
+	}
+
+	return values, nil
+}
