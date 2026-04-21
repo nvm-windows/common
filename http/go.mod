@@ -1,6 +1,6 @@
 module common/http
 
-go 1.26.0
+go 1.26.2
 
 replace common/proxy v1.0.0 => ../proxy
 

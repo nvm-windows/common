@@ -105,18 +105,25 @@ func List(majors ...string) ([][]string, error) {
 func Find(version string) (string, string, error) {
 	// Resolve aliases before normal version parsing.
 	lower := strings.ToLower(strings.TrimSpace(version))
-	if lower == "latest" || lower == "lts" || strings.HasPrefix(lower, "lts/") {
+	v := strings.TrimPrefix(strings.TrimSpace(version), "v")
+	isUserAlias := false
+
+	if _, err := strconv.Atoi(strings.Split(v, ".")[0]); err != nil {
+		isUserAlias = true
+	}
+
+	if isUserAlias || lower == "latest" || lower == "lts" || strings.HasPrefix(lower, "lts/") {
 		resolved, err := alias(lower)
 		if err != nil {
 			return "", "", err
 		}
-		version = resolved
+		v = resolved
 	}
 
-	// Strip prerelease/build metadata and leading "v" for matching purposes.
+	// Strip prerelease/build metadata for matching purposes.
 	// Prereleases will not be supported until the new Node.js schedule is
 	// implemented with Alpha releases.
-	v := strings.Split(strings.TrimPrefix(strings.TrimSpace(version), "v"), "-")[0]
+	v = strings.Split(v, "-")[0]
 	parts := strings.Split(v, ".")
 
 	major := parts[0]
@@ -216,6 +223,17 @@ func alias(version string) (string, error) {
 		return "", fmt.Errorf("no LTS version found with name %q", name)
 	}
 
+	// User-defined aliases
+	cfg := settings.Global()
+	if len(cfg.Aliases) > 0 {
+		for _, pair := range cfg.Aliases {
+			parts := strings.SplitN(pair, "=", 2)
+			if len(parts) == 2 && strings.EqualFold(parts[0], version) {
+				return parts[1], nil
+			}
+		}
+	}
+
 	return "", fmt.Errorf("unknown alias: %s", version)
 }
 
@@ -230,7 +248,19 @@ func Resolve(version string) (string, error) {
 		return "", fmt.Errorf("version must not be empty")
 	}
 
-	// Handle aliases and plain/partial versions via Find, which covers
+	// First attempt to resolve user defined aliases.
+	cfg := settings.Global()
+	if len(cfg.Aliases) > 0 {
+		for _, pair := range cfg.Aliases {
+			parts := strings.SplitN(pair, "=", 2)
+			if len(parts) == 2 && strings.EqualFold(parts[0], v) {
+				v = parts[1]
+				break
+			}
+		}
+	}
+
+	// Handle reserved aliases and plain/partial versions via Find, which covers
 	// "latest", "lts", "lts/<name>", "18", "18.20", "18.20.1", "v18.20.1".
 	resolved, _, err := Find(v)
 	if err == nil {

@@ -1,6 +1,6 @@
 module common/settings
 
-go 1.26.0
+go 1.26.2
 
 require (
 	common/preferences v1.0.0

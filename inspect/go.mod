@@ -1,6 +1,6 @@
 module common/inspect
 
-go 1.26.0
+go 1.26.2
 
 replace common/settings v1.0.0 => ../settings
 

@@ -1,6 +1,6 @@
 module common/resolver
 
-go 1.26.0
+go 1.26.2
 
 require (
   common/http v1.0.0
