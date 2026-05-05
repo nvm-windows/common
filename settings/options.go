@@ -21,10 +21,14 @@ type Settings struct {
 	AllowRootDirChange        bool     `cfg:"allow_root_dir_change" reg:"AllowRootDirChange" default:"true" help:"Allow changing the install root directory." hidden:"true"`
 	LocalInstallDir           string   `cfg:"local_dir" reg:"LocalInstallDir" help:"An alternative directory for installing Node.js versions. This overrides the cache." hidden:"true"`
 	LocalInstallOnly          bool     `cfg:"local_install_only" reg:"LocalInstallOnly" default:"false" help:"Only install Node.js versions from the local install directory." hidden:"true"`
+	NewsFeedURL               string   `cfg:"news_feed_url" reg:"NewsFeedURL" default:"https://updates.nvm-windows.com/news" help:"URL for fetching news entries." hidden:"true"`
 	LastUpdateCheck           string   `cfg:"last_update_check" reg:"LastUpdateCheck" help:"The last time updates were checked." hidden:"true"`
 	LastNewsCheck             string   `cfg:"last_news_check" reg:"LastNewsCheck" help:"The last time news was checked." hidden:"true"`
 	LastSyncCheck             string   `cfg:"last_sync_check" reg:"LastSyncCheck" help:"The last time sync app was updated." hidden:"true"`
 	Aliases                   []string `cfg:"aliases" reg:"Aliases" default:"" help:"Comma-delimited list of version aliases in the format alias=version." hidden:"true"`
 	AllowedSigners            []string `cfg:"allowed_signers" reg:"AllowedSigners" default:"Author Software Inc.,OpenJS Foundation,Node.js Foundation" help:"Comma-delimited list of allowed code signers." hidden:"true"`
 	LogExecutions             bool     `cfg:"log_executions" reg:"LogExecutions" default:"false" help:"Whether to log every Node.js invocation (ex: node file.js). (shim-only)" hidden:"false"`
+	Enabled                   bool     `cfg:"enabled" reg:"Enabled" default:"false" help:"Whether Node.js version management is enabled. This is automatically set when running 'nvm on' or 'nvm off'." hidden:"true"`
+	AllowToolInstall          bool     `cfg:"allow_tool_install" reg:"AllowToolInstall" default:"true" help:"Whether to allow installation of native tools (nvm install native-tools)." hidden:"true"`
+	DisableAnnouncements      bool     `cfg:"disable_announcements" reg:"DisableAnnouncements" default:"false" help:"Whether to disable project and release announcements." hidden:"false"`
 }
