@@ -139,3 +139,20 @@ func CheckInstalledLocally(spec string) (string, bool) {
 	}
 	return normalized, true
 }
+
+func isPartialVersionSpec(version string) bool {
+	normalized := NormalizeVersion(version)
+	parts := strings.Split(normalized, ".")
+	if len(parts) == 0 || len(parts) > 2 {
+		return false
+	}
+	for _, part := range parts {
+		if part == "" {
+			return false
+		}
+		if _, err := strconv.Atoi(part); err != nil {
+			return false
+		}
+	}
+	return true
+}
