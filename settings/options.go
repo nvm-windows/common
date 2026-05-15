@@ -10,7 +10,7 @@ type Settings struct {
 	ActiveVersion                string   `cfg:"active_version" reg:"ActiveVersion"`
 	LastVersion                  string   `cfg:"last_version" reg:"PreviousActiveVersion" help:"The last active version before the current one. Used for 'nvm use last'." hidden:"true"`
 	AutoDetect                   []string `cfg:"auto_detect" reg:"AutoDetect" default:".nvmrc,.node-version,package.json" help:"Project files to inspect for version (shim-only)."` // comma-separated list of files to inspect for version
-	DefaultDetectFile            string   `cfg:"default_detect_file" reg:"DefaultDetectFile" default:".nvmrc" help:"The default file to write to when saving/pinning a version to a project."`
+	DefaultDetectFile            string   `cfg:"default_rc_filename" reg:"DefaultDetectFile" default:".nvmrc" help:"The default file to write to when saving/pinning a version to a project." hidden:"true"`
 	AutoUse                      bool     `cfg:"auto_use" reg:"AutoUse" default:"true" help:"Automatically switch to auto-detected version to run the specified scripts without modifying the system version (shim-only)."`
 	AutoInstall                  bool     `cfg:"auto_install" reg:"AutoInstall" default:"false" help:"Automatically install missing auto-detected version (rc/shim-only)."`
 	AutoInstallPrompt            bool     `cfg:"auto_install_prompt" reg:"AutoInstallPrompt" default:"true" help:"Prompt before automatically installing missing auto-detected version (rc/shim-only)."`
