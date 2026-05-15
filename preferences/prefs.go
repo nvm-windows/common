@@ -9,4 +9,5 @@ var (
 )
 
 var ROOT = strings.Join([]string{"HKCU/Software", org, subkey, app}, "/")
+var ROOTS = []string{ROOT}
 var NVM_CMD = strings.Join([]string{"HKCU/Software/Classes", app, "shell/open/command"}, "/")

@@ -8,6 +8,7 @@ import (
 	"os"
 	"reflect"
 	"regexp"
+	"slices"
 	"strconv"
 	"strings"
 )
@@ -37,9 +38,24 @@ func Load(reload ...bool) {
 		return
 	}
 
-	values, err := registry.GetAll(prefs.ROOT)
+	roots := prefs.ROOTS
+	slices.Reverse(roots)
+
+	values, err := registry.GetAll(roots[0])
 	if err != nil {
 		return
+	}
+
+	if len(roots) > 1 {
+		for _, root := range roots[1:] {
+			data, err := registry.GetAll(root)
+			if err != nil {
+				continue
+			}
+			for k, v := range data {
+				values[k] = v
+			}
+		}
 	}
 
 	t := reflect.TypeOf(Settings{})
@@ -192,7 +208,11 @@ func key(name string) string {
 	return ""
 }
 
-func regkey(name string) string {
+func regkey(name string, root ...string) string {
+	if len(root) > 0 {
+		return root[0] + "/" + key(name)
+	}
+
 	return prefs.ROOT + "/" + key(name)
 }
 
@@ -327,9 +347,9 @@ func Put(name string, value interface{}) error {
 	return nil
 }
 
-func Get(name string) (interface{}, error) {
-	k := regkey(name)
-	if k == prefs.ROOT+"/" {
+func get(root, name string) (interface{}, error) {
+	k := regkey(name, root)
+	if k == root+"/" {
 		return nil, fmt.Errorf("unknown setting %q", name)
 	}
 
@@ -362,6 +382,21 @@ func Get(name string) (interface{}, error) {
 	}
 
 	return DefaultValue(name)
+}
+
+func Get(name string) (interface{}, error) {
+	if len(prefs.ROOTS) > 1 {
+		var result interface{}
+		var err error
+		for _, root := range prefs.ROOTS {
+			result, err = get(root, name)
+			if err == nil {
+				return result, nil
+			}
+		}
+	}
+
+	return get(prefs.ROOT, name)
 }
 
 func Del(name string) error {
