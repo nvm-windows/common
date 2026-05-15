@@ -8,7 +8,6 @@ import (
 	"os"
 	"reflect"
 	"regexp"
-	"slices"
 	"strconv"
 	"strings"
 )
@@ -38,24 +37,28 @@ func Load(reload ...bool) {
 		return
 	}
 
-	roots := prefs.ROOTS
-	slices.Reverse(roots)
-
-	values, err := registry.GetAll(roots[0])
+	values, err := registry.GetAll(prefs.ROOTS[0])
 	if err != nil {
 		return
 	}
 
-	if len(roots) > 1 {
-		for _, root := range roots[1:] {
+	if len(prefs.ROOTS) > 1 {
+		for _, root := range prefs.ROOTS[1:] {
 			data, err := registry.GetAll(root)
 			if err != nil {
 				continue
 			}
+
 			for k, v := range data {
-				values[k] = v
+				if _, exists := values[k]; !exists {
+					values[k] = v
+				}
 			}
 		}
+	}
+
+	if len(values) == 0 {
+		return
 	}
 
 	t := reflect.TypeOf(Settings{})
@@ -347,10 +350,19 @@ func Put(name string, value interface{}) error {
 	return nil
 }
 
-func get(root, name string) (interface{}, error) {
-	k := regkey(name, root)
-	if k == root+"/" {
+func Get(name string) (interface{}, error) {
+	regName := key(name)
+	if regName == "" {
 		return nil, fmt.Errorf("unknown setting %q", name)
+	}
+
+	keys := make([]string, 0, len(prefs.ROOTS))
+	for _, root := range prefs.ROOTS {
+		keys = append(keys, regkey(name, root))
+	}
+
+	if len(keys) == 0 {
+		keys = append(keys, regkey(name))
 	}
 
 	field, ok := fieldByCfg(name)
@@ -358,7 +370,7 @@ func get(root, name string) (interface{}, error) {
 	// Bool fields are stored as DWORDs; use the bool-aware getter so callers
 	// always receive a typed bool rather than a raw uint32.
 	if ok && field.Type.Kind() == reflect.Bool {
-		value, exists, err := registry.GetBool(k)
+		value, exists, err := registry.GetBool(keys...)
 		if err != nil {
 			return nil, err
 		}
@@ -368,7 +380,7 @@ func get(root, name string) (interface{}, error) {
 		return DefaultValue(name)
 	}
 
-	value, exists, err := registry.Get(k)
+	value, exists, err := registry.Get(keys...)
 	if err != nil {
 		return nil, err
 	}
@@ -382,21 +394,6 @@ func get(root, name string) (interface{}, error) {
 	}
 
 	return DefaultValue(name)
-}
-
-func Get(name string) (interface{}, error) {
-	if len(prefs.ROOTS) > 1 {
-		var result interface{}
-		var err error
-		for _, root := range prefs.ROOTS {
-			result, err = get(root, name)
-			if err == nil {
-				return result, nil
-			}
-		}
-	}
-
-	return get(prefs.ROOT, name)
 }
 
 func Del(name string) error {
