@@ -29,6 +29,30 @@ func Get(key ...string) (interface{}, bool, error) {
 	return nil, false, nil
 }
 
+// GetSubKeys returns the names of all subkeys under a registry key path.
+func GetSubKeys(keyPath string) ([]string, error) {
+	root, path, err := parseRegistryPath(keyPath)
+	if err != nil {
+		return nil, err
+	}
+
+	handle, err := winreg.OpenKey(root, path, winreg.QUERY_VALUE|winreg.ENUMERATE_SUB_KEYS)
+	if err != nil {
+		if isNotFoundError(err) {
+			return []string{}, nil
+		}
+		return nil, err
+	}
+	defer handle.Close()
+
+	names, err := handle.ReadSubKeyNames(-1)
+	if err != nil {
+		return nil, err
+	}
+
+	return names, nil
+}
+
 // GetAll returns all values under a registry key path as a flat map.
 func GetAll(keyPath string) (map[string]interface{}, error) {
 	root, path, err := parseRegistryPath(keyPath)
