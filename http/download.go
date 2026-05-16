@@ -12,10 +12,13 @@ import (
 	"sync"
 )
 
+var GlobalHeaders = map[string]string{}
+
 type DownloadConfig struct {
 	Cache         bool
 	Destination   string
 	AllowInsecure bool
+	Headers       map[string]string
 }
 
 type DownloadResponse struct {
@@ -101,12 +104,21 @@ func Download(url string, config ...DownloadConfig) (*DownloadJob, error) {
 
 // downloadInternal performs the actual download logic
 func downloadInternal(ctx context.Context, url string, cfg DownloadConfig, progress chan<- DownloadProgress) (*DownloadResponse, error) {
-
 	req, err := makeRequest("GET", url)
 	if err != nil {
 		return nil, err
 	}
 	req = req.WithContext(ctx)
+
+	// Apply global headers
+	for k, v := range GlobalHeaders {
+		req.Header.Set(k, v)
+	}
+
+	// Apply custom headers from DownloadConfig
+	for k, v := range cfg.Headers {
+		req.Header.Set(k, v)
+	}
 
 	client := new(cfg.AllowInsecure)
 	res, err := client.client.Do(req)

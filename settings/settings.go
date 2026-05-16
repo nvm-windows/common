@@ -161,6 +161,8 @@ func convertRegistryValue(value interface{}, targetType reflect.Type) interface{
 		switch v := value.(type) {
 		case string:
 			return v
+		case []byte:
+			return strings.TrimSpace(string(v))
 		default:
 			return nil
 		}
@@ -312,6 +314,11 @@ func Put(name string, value interface{}) error {
 
 	switch v := value.(type) {
 	case string:
+		if name == "access_token" {
+			putErr = registry.Put([]byte(v), k)
+			break
+		}
+
 		switch {
 		case field.Type.Kind() == reflect.Bool:
 			// Store bool settings as DWORD 0/1 in the registry.
@@ -386,6 +393,12 @@ func Get(name string) (interface{}, error) {
 	}
 
 	if exists && value != nil {
+		if field, ok := fieldByCfg(name); ok && field.Type.Kind() == reflect.String {
+			if raw, ok := value.([]byte); ok {
+				value = strings.TrimSpace(string(raw))
+			}
+		}
+
 		if name == "root" {
 			value = Expand(value.(string))
 		}

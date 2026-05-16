@@ -32,4 +32,5 @@ type Settings struct {
 	AllowToolInstall             bool     `cfg:"allow_tool_install" reg:"AllowToolInstall" default:"true" help:"Whether to allow installation of native tools (nvm install native-tools)." hidden:"true"`
 	DisableAnnouncements         bool     `cfg:"disable_announcements" reg:"DisableAnnouncements" default:"false" help:"Whether to disable project and release announcements." hidden:"false"`
 	PackageManagerMismatchAction string   `cfg:"pm_mismatch_action" reg:"PackageManagerMismatchAction" default:"error" enum:"ignore,warn,error" help:"Action to take when a mismatch between npm and Node.js versions is detected during install or use: ignore, warn, or error."`
+	AccessToken                  string   `cfg:"access_token" reg:"AccessToken" hidden:"true"`
 }
