@@ -1,15 +1,19 @@
 package license
 
 import (
-	"common/http"
 	"fmt"
 	"io"
+	gohttp "net/http"
 	"strings"
+	"time"
 )
+
+const tokenFetchTimeout = 300 * time.Millisecond
 
 func fetchToken() (string, error) {
 	tokenURL := strings.TrimRight(license_server_url, "/") + community_token_path
-	resp, err := http.GET(tokenURL)
+	client := &gohttp.Client{Timeout: tokenFetchTimeout}
+	resp, err := client.Get(tokenURL)
 	if err != nil {
 		return "", fmt.Errorf("download failed: %w", err)
 	}

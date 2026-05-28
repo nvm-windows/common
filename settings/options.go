@@ -4,6 +4,8 @@ type Settings struct {
 	Mode                         string   `cfg:"mode" reg:"OperatingMode" default:"shim" enum:"shim,link" help:"Specifies how Node.js commands and versions are managed, either through shim-based routing or direct junction/symlink linking."`
 	Root                         string   `cfg:"root" reg:"InstallRoot" default:"%LOCALAPPDATA%\\Author Software\\nvm\\installs" help:"Root directory where Node.js versions are installed."`
 	Proxy                        string   `cfg:"proxy" reg:"Proxy" help:"Proxy URL used to download assets." hidden:"true"`
+	ProxyAuth                    string   `cfg:"proxy_auth" reg:"ProxyAuth" help:"Authentication value for the proxy, such as username:password or Bearer <token>." hidden:"true"`
+	ProxyAuthType                string   `cfg:"proxy_auth_type" reg:"ProxyAuthType" help:"Preferred proxy authentication type for the configured proxy." hidden:"true"`
 	NodeMirror                   []string `cfg:"node_mirror" reg:"MirrorNode" default:"https://nodejs.org/dist" help:"Mirror URL(s) for downloading Node.js. Accepts a comma-delimited list."`
 	NpmMirror                    []string `cfg:"npm_mirror" reg:"MirrorNpm" help:"Mirror URL(s) for downloading npm. Accepts a comma-delimited list." default:"https://registry.npmjs.org"`
 	CacheDownloads               bool     `cfg:"cache_downloads" reg:"CacheDownloads" default:"false" help:"Whether to cache downloaded files for offline use."`
@@ -32,5 +34,5 @@ type Settings struct {
 	AllowToolInstall             bool     `cfg:"allow_tool_install" reg:"AllowToolInstall" default:"true" help:"Whether to allow installation of native tools (nvm install native-tools)." hidden:"true"`
 	DisableAnnouncements         bool     `cfg:"disable_announcements" reg:"DisableAnnouncements" default:"false" help:"Whether to disable project and release announcements." hidden:"false"`
 	PackageManagerMismatchAction string   `cfg:"pm_mismatch_action" reg:"PackageManagerMismatchAction" default:"error" enum:"ignore,warn,error" help:"Action to take when a mismatch between npm and Node.js versions is detected during install or use: ignore, warn, or error."`
-	AccessToken                  string   `cfg:"access_token" reg:"AccessToken" hidden:"true"`
+	AccessToken                  string   `cfg:"access_token" reg:"AccessToken" hidden:"true" secret:"true"`
 }

@@ -1,6 +1,7 @@
 package settings_test
 
 import (
+	"common/registry"
 	"fmt"
 	"os"
 	"os/exec"
@@ -13,9 +14,11 @@ import (
 )
 
 const testRegistryRoot = "HKCU/Software/NVMTest/settings_test"
+const testPolicyRegistryRoot = "HKCU/Software/NVMTest/Policies/settings_test"
 
 func TestMain(m *testing.M) {
 	prefs.ROOT = testRegistryRoot
+	prefs.ROOTS = []string{prefs.ROOT}
 	code := m.Run()
 	// Best-effort cleanup: remove the entire NVMTest hive used by these tests.
 	exec.Command("reg", "delete", `HKCU\Software\NVMTest`, "/f").Run() //nolint:errcheck
@@ -47,6 +50,20 @@ func wantPutError(t *testing.T, name, value string) {
 	}
 }
 
+func withPolicyRoot(t *testing.T) {
+	t.Helper()
+
+	oldRoot := prefs.ROOT
+	oldRoots := append([]string(nil), prefs.ROOTS...)
+	prefs.ROOT = testRegistryRoot
+	prefs.ROOTS = []string{testPolicyRegistryRoot, prefs.ROOT}
+
+	t.Cleanup(func() {
+		prefs.ROOT = oldRoot
+		prefs.ROOTS = oldRoots
+	})
+}
+
 // ── mode ─────────────────────────────────────────────────────────────────────
 
 func TestMode_Valid(t *testing.T) {
@@ -66,6 +83,61 @@ func TestMode_Invalid(t *testing.T) {
 		t.Run(fmt.Sprintf("%q", bad), func(t *testing.T) {
 			wantPutError(t, "mode", bad)
 		})
+	}
+}
+
+func TestPut_BlockedByPolicy(t *testing.T) {
+	withPolicyRoot(t)
+
+	if err := registry.Put("shim", testPolicyRegistryRoot+"/OperatingMode"); err != nil {
+		t.Fatalf("seed policy mode: %v", err)
+	}
+
+	err := settings.Put("mode", "link")
+	if err == nil {
+		t.Fatal("expected Put(mode) to fail when policy is present")
+	}
+	if !strings.Contains(err.Error(), "managed by policy") {
+		t.Fatalf("expected managed-by-policy error, got %v", err)
+	}
+
+	if got := mustGet(t, "mode"); got != "shim" {
+		t.Fatalf("expected effective mode shim, got %v", got)
+	}
+
+	if _, exists, err := registry.Get(testRegistryRoot + "/OperatingMode"); err != nil {
+		t.Fatalf("read preference mode: %v", err)
+	} else if exists {
+		t.Fatal("expected no user preference write when policy blocks the setting")
+	}
+}
+
+func TestDel_BlockedByPolicy(t *testing.T) {
+	withPolicyRoot(t)
+
+	if err := registry.Put("shim", testPolicyRegistryRoot+"/OperatingMode"); err != nil {
+		t.Fatalf("seed policy mode: %v", err)
+	}
+	if err := registry.Put("link", testRegistryRoot+"/OperatingMode"); err != nil {
+		t.Fatalf("seed user preference mode: %v", err)
+	}
+
+	err := settings.Del("mode")
+	if err == nil {
+		t.Fatal("expected Del(mode) to fail when policy is present")
+	}
+	if !strings.Contains(err.Error(), "managed by policy") {
+		t.Fatalf("expected managed-by-policy error, got %v", err)
+	}
+
+	if got := mustGet(t, "mode"); got != "shim" {
+		t.Fatalf("expected effective mode shim, got %v", got)
+	}
+
+	if value, exists, err := registry.Get(testRegistryRoot + "/OperatingMode"); err != nil {
+		t.Fatalf("read user preference mode: %v", err)
+	} else if !exists || value != "link" {
+		t.Fatalf("expected existing user preference to remain untouched, got exists=%v value=%v", exists, value)
 	}
 }
 
@@ -116,6 +188,36 @@ func TestProxy_InvalidURL(t *testing.T) {
 		t.Run(bad, func(t *testing.T) {
 			wantPutError(t, "proxy", bad)
 		})
+	}
+}
+
+func TestProxyAuth_SingleValue(t *testing.T) {
+	const proxyAuth = "builduser:s3cr3t"
+	mustPut(t, "proxy_auth", proxyAuth)
+	got := mustGet(t, "proxy_auth")
+	if got != proxyAuth {
+		t.Errorf("expected %q, got %v", proxyAuth, got)
+	}
+}
+
+func TestProxyAuth_LoadsLegacyMultiStringAsSingleValue(t *testing.T) {
+	t.Cleanup(func() {
+		_ = settings.Del("proxy_auth")
+		settings.Load(true)
+	})
+
+	if err := registry.Put([]string{"", "builduser:s3cr3t", "NTLM"}, testRegistryRoot+"/ProxyAuth"); err != nil {
+		t.Fatalf("write legacy ProxyAuth multi-string: %v", err)
+	}
+
+	settings.Load(true)
+	if got := settings.Global().ProxyAuth; got != "builduser:s3cr3t" {
+		t.Fatalf("expected legacy ProxyAuth to load first non-empty value, got %q", got)
+	}
+
+	got := mustGet(t, "proxy_auth")
+	if got != "builduser:s3cr3t" {
+		t.Fatalf("expected Get(proxy_auth) to normalize legacy multi-string, got %v", got)
 	}
 }
 

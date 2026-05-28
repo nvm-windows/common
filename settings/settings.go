@@ -158,17 +158,44 @@ func convertRegistryValue(value interface{}, targetType reflect.Type) interface{
 
 	// For string fields and other types, return as-is only if type matches
 	if targetType.Kind() == reflect.String {
-		switch v := value.(type) {
-		case string:
-			return v
-		case []byte:
-			return strings.TrimSpace(string(v))
-		default:
-			return nil
+		if normalized, ok := normalizeRegistryStringValue(value); ok {
+			return normalized
 		}
+		return nil
 	}
 
 	return value
+}
+
+func normalizeRegistryStringValue(value interface{}) (string, bool) {
+	switch v := value.(type) {
+	case string:
+		return v, true
+	case []byte:
+		return strings.TrimSpace(string(v)), true
+	case []string:
+		for _, item := range v {
+			item = strings.TrimSpace(item)
+			if item != "" {
+				return item, true
+			}
+		}
+		return "", true
+	case []interface{}:
+		for _, item := range v {
+			text, ok := item.(string)
+			if !ok {
+				continue
+			}
+			text = strings.TrimSpace(text)
+			if text != "" {
+				return text, true
+			}
+		}
+		return "", true
+	default:
+		return "", false
+	}
 }
 
 // Global returns the currently loaded settings.
@@ -204,6 +231,104 @@ func fieldByCfg(name string) (reflect.StructField, bool) {
 	return reflect.StructField{}, false
 }
 
+func IsSecret(name string) bool {
+	field, ok := fieldByCfg(name)
+	return ok && field.Tag.Get("secret") == "true"
+}
+
+func HasChangeAudit(name string) bool {
+	switch name {
+	case "access_token":
+		return true
+	default:
+		return false
+	}
+}
+
+func MaskedValue(name string, value interface{}) interface{} {
+	if !IsSecret(name) {
+		return value
+	}
+
+	if value == nil {
+		return nil
+	}
+
+	switch v := value.(type) {
+	case string:
+		if strings.TrimSpace(v) == "" {
+			return nil
+		}
+		return "(redacted)"
+	case []byte:
+		if strings.TrimSpace(string(v)) == "" {
+			return nil
+		}
+		return "(redacted)"
+	case []string:
+		for _, item := range v {
+			if strings.TrimSpace(item) != "" {
+				return []string{"(redacted)"}
+			}
+		}
+		return []string{}
+	default:
+		return "(redacted)"
+	}
+}
+
+func comparableValue(value interface{}) string {
+	switch v := value.(type) {
+	case nil:
+		return ""
+	case string:
+		return strings.TrimSpace(v)
+	case []byte:
+		return strings.TrimSpace(string(v))
+	case []string:
+		trimmed := make([]string, 0, len(v))
+		for _, item := range v {
+			item = strings.TrimSpace(item)
+			if item != "" {
+				trimmed = append(trimmed, item)
+			}
+		}
+		return strings.Join(trimmed, ",")
+	default:
+		return strings.TrimSpace(fmt.Sprint(v))
+	}
+}
+
+func ChangeAuditMessage(name string, currentValue, newValue interface{}) (string, bool) {
+	if !HasChangeAudit(name) {
+		return "", false
+	}
+
+	current := comparableValue(currentValue)
+	next := comparableValue(newValue)
+	if current == next {
+		return "", false
+	}
+
+	if next == "" {
+		return "License key cleared.", true
+	}
+
+	return "License key changed.", true
+}
+
+func DeletionAuditMessage(name string, currentValue interface{}) (string, bool) {
+	if !HasChangeAudit(name) {
+		return "", false
+	}
+
+	if comparableValue(currentValue) == "" {
+		return "", false
+	}
+
+	return "License key cleared.", true
+}
+
 func key(name string) string {
 	field, ok := fieldByCfg(name)
 	if ok {
@@ -219,6 +344,76 @@ func regkey(name string, root ...string) string {
 	}
 
 	return prefs.ROOT + "/" + key(name)
+}
+
+func policyRegKeys(name string) []string {
+	regName := key(name)
+	if regName == "" {
+		return nil
+	}
+
+	keys := make([]string, 0, len(prefs.ROOTS))
+	for _, root := range prefs.ROOTS {
+		normalizedRoot := strings.ToUpper(strings.ReplaceAll(strings.TrimSpace(root), `\`, "/"))
+		if strings.Contains(normalizedRoot, "/POLICIES/") {
+			keys = append(keys, regkey(name, root))
+		}
+	}
+
+	return keys
+}
+
+func policyValue(name string) (interface{}, bool, error) {
+	keys := policyRegKeys(name)
+	if len(keys) == 0 {
+		return nil, false, nil
+	}
+
+	field, ok := fieldByCfg(name)
+	if ok && field.Type.Kind() == reflect.Bool {
+		value, exists, err := registry.GetBool(keys...)
+		if err != nil || !exists {
+			return nil, exists, err
+		}
+		return value, true, nil
+	}
+
+	value, exists, err := registry.Get(keys...)
+	if err != nil || !exists {
+		return nil, exists, err
+	}
+
+	if ok && field.Type.Kind() == reflect.String {
+		if normalized, ok := normalizeRegistryStringValue(value); ok {
+			value = normalized
+		}
+	}
+
+	if name == "root" {
+		if rootValue, ok := value.(string); ok {
+			value = Expand(rootValue)
+		}
+	}
+
+	return value, true, nil
+}
+
+func ensureNotPolicyManaged(name string) error {
+	value, exists, err := policyValue(name)
+	if err != nil {
+		return err
+	}
+
+	if !exists {
+		return nil
+	}
+
+	masked := MaskedValue(name, value)
+	if comparableValue(masked) == "" {
+		return fmt.Errorf("%q is managed by policy and cannot be changed", name)
+	}
+
+	return fmt.Errorf("%q is managed by policy and cannot be changed (effective value: %v)", name, masked)
 }
 
 // Validate checks whether value is acceptable for the named setting.
@@ -303,6 +498,10 @@ func Put(name string, value interface{}) error {
 	k := regkey(name)
 	if k == prefs.ROOT+"/" {
 		return fmt.Errorf("unknown setting %q", name)
+	}
+
+	if err := ensureNotPolicyManaged(name); err != nil {
+		return err
 	}
 
 	if err := Validate(name, value); err != nil {
@@ -394,8 +593,8 @@ func Get(name string) (interface{}, error) {
 
 	if exists && value != nil {
 		if field, ok := fieldByCfg(name); ok && field.Type.Kind() == reflect.String {
-			if raw, ok := value.([]byte); ok {
-				value = strings.TrimSpace(string(raw))
+			if normalized, ok := normalizeRegistryStringValue(value); ok {
+				value = normalized
 			}
 		}
 
@@ -413,6 +612,10 @@ func Del(name string) error {
 	k := regkey(name)
 	if k == prefs.ROOT+"/" {
 		return fmt.Errorf("unknown setting %q", name)
+	}
+
+	if err := ensureNotPolicyManaged(name); err != nil {
+		return err
 	}
 
 	return registry.Del(k)

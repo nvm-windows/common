@@ -28,7 +28,8 @@ const (
 var sourceName = "NVM for Windows"
 
 // RegisterEventSource registers the application as a Windows Event Log source
-// under HKLM. Requires elevation — called by the installer via --register-eventlog.
+// under HKLM. Requires elevation and is intended for optional admin tooling or
+// machine policy, not the per-user MSI.
 func RegisterEventSource(appName string) error {
 	src := sourceName
 	if appName != "" {
@@ -38,8 +39,8 @@ func RegisterEventSource(appName string) error {
 }
 
 // UnregisterEventSource removes the application's Windows Event Log source
-// registration from HKLM. Requires elevation — called by the uninstaller via
-// --unregister-eventlog.
+// registration from HKLM. Requires elevation and is intended for optional
+// admin tooling, not the per-user MSI.
 func UnregisterEventSource(appName string) error {
 	src := sourceName
 	if appName != "" {

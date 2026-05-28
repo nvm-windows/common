@@ -4,11 +4,14 @@ import (
 	"common/settings"
 	"common/token"
 	"fmt"
+	"time"
 )
 
 var license_server_url = "https://licensing.author.io"
 var community_token_path = "/.well-known/token/nvm.jwt"
 var AccessToken *token.AccessToken
+
+const temporaryTokenTTL = 5 * time.Minute
 
 func Activate() error {
 	cfg := settings.Global()
@@ -18,7 +21,10 @@ func Activate() error {
 		var err error
 		tkn, err = fetchToken()
 		if err != nil {
-			return fmt.Errorf("Missing access token. Connect to the internet to obtain a free token or contact your system administrator for a commercial license: %w", err)
+			if fallbackErr := useTemporaryToken(); fallbackErr != nil {
+				return fmt.Errorf("Missing access token. Connect to the internet to obtain a free token or contact your system administrator for a commercial license: %w (temporary token fallback failed: %v)", err, fallbackErr)
+			}
+			return nil
 		}
 
 		if err := settings.Put("access_token", tkn); err != nil {
@@ -27,7 +33,10 @@ func Activate() error {
 	}
 
 	if err := token.Set(tkn); err != nil {
-		return fmt.Errorf("Failed to parse access token: %w", err)
+		if fallbackErr := useTemporaryToken(); fallbackErr != nil {
+			return fmt.Errorf("Failed to parse access token: %w (temporary token fallback failed: %v)", err, fallbackErr)
+		}
+		return nil
 	}
 
 	AccessToken = token.Access
@@ -35,19 +44,43 @@ func Activate() error {
 	if AccessToken.Expired() {
 		tkn, fetchErr := fetchToken()
 		if fetchErr != nil {
-			if clearErr := settings.Del("access_token"); clearErr != nil {
-				return fmt.Errorf("Access token expired and failed to fetch a new one: %w; additionally failed to clear cached token: %v", fetchErr, clearErr)
+			if fallbackErr := useTemporaryToken(); fallbackErr != nil {
+				return fmt.Errorf("Access token expired and failed to fetch a new one: %w (temporary token fallback failed: %v)", fetchErr, fallbackErr)
 			}
-
-			return fmt.Errorf("Access token expired and failed to fetch a new one: %w", fetchErr)
+			return nil
 		}
 
 		if err := token.Set(tkn); err != nil {
-			return fmt.Errorf("Failed to parse access token: %w", err)
+			if fallbackErr := useTemporaryToken(); fallbackErr != nil {
+				return fmt.Errorf("Failed to parse access token: %w (temporary token fallback failed: %v)", err, fallbackErr)
+			}
+			return nil
+		}
+
+		if err := settings.Put("access_token", tkn); err != nil {
+			return fmt.Errorf("Retrieved access token but failed to save it locally: %w", err)
 		}
 
 		AccessToken = token.Access
 	}
 
+	return nil
+}
+
+func useTemporaryToken() error {
+	tmp, err := token.NewTemporaryToken(temporaryTokenTTL)
+	if err != nil {
+		return err
+	}
+
+	if err := settings.Put("access_token", tmp); err != nil {
+		return err
+	}
+
+	if err := token.Set(tmp); err != nil {
+		return err
+	}
+
+	AccessToken = token.Access
 	return nil
 }
