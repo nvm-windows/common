@@ -1,11 +1,13 @@
 package settings
 
 import (
+	"common/fs"
 	prefs "common/preferences"
 	"common/registry"
 	"fmt"
 	"net/url"
 	"os"
+	"path/filepath"
 	"reflect"
 	"regexp"
 	"strconv"
@@ -445,6 +447,7 @@ func Validate(name string, value interface{}) error {
 		if strings.TrimSpace(strVal) == "" {
 			return fmt.Errorf("root must be a non-empty path")
 		}
+		fs.WarnRiskyRootLayout(filepath.Clean(Expand(strVal)))
 
 	case "proxy":
 		if strings.TrimSpace(strVal) == "" {
@@ -544,9 +547,12 @@ func Put(name string, value interface{}) error {
 
 	// After recording root, ensure the directory exists.
 	if name == "root" {
-		if err := os.MkdirAll(strings.TrimSpace(value.(string)), 0755); err != nil {
-			return fmt.Errorf("root: could not create \"%s\" directory: %w", strings.TrimSpace(value.(string)), err)
+		rootPath := filepath.Clean(Expand(strings.TrimSpace(value.(string))))
+		if err := os.MkdirAll(rootPath, 0755); err != nil {
+			return fmt.Errorf("root: could not create \"%s\" directory: %w", rootPath, err)
 		}
+		_ = fs.HardenManagedDirectory(rootPath)
+		_ = fs.HardenManagedDirectory(filepath.Dir(rootPath))
 	}
 
 	return nil

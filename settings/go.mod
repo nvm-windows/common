@@ -3,6 +3,7 @@ module common/settings
 go 1.26.2
 
 require (
+	common/fs v1.0.0
 	common/preferences v1.0.0
 	common/registry v1.0.0
 )
