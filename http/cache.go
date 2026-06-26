@@ -1,6 +1,7 @@
 package http
 
 import (
+	"common/settings"
 	"errors"
 	"io"
 	"os"
@@ -119,7 +120,7 @@ func GetCacheDir() (string, error) {
 		return "", err
 	}
 
-	cacheDir := filepath.Join(filepath.Dir(exe), ".cache", httpCacheRoot)
+	cacheDir := cacheDirPath(exe, settings.Global().Root)
 	if err := os.MkdirAll(cacheDir, 0o755); err != nil {
 		return "", err
 	}
@@ -135,6 +136,15 @@ func GetCacheDir() (string, error) {
 	_ = windows.SetFileAttributes(cacheDirUTF16, FILE_ATTRIBUTE_HIDDEN)
 
 	return cacheDir, nil
+}
+
+func cacheDirPath(executablePath, installRoot string) string {
+	installRoot = settings.Expand(strings.TrimSpace(installRoot))
+	if installRoot != "" {
+		return filepath.Join(filepath.Dir(filepath.Clean(installRoot)), ".cache", httpCacheRoot)
+	}
+
+	return filepath.Join(filepath.Dir(executablePath), ".cache", httpCacheRoot)
 }
 
 func normalizeEtag(value string) string {

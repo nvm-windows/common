@@ -57,10 +57,6 @@ func Load(reload ...bool) {
 		}
 	}
 
-	if len(values) == 0 {
-		return
-	}
-
 	t := reflect.TypeOf(Settings{})
 	s := reflect.ValueOf(&globalSettings).Elem()
 

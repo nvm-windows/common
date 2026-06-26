@@ -30,7 +30,7 @@ type Settings struct {
 	Aliases                      []string `cfg:"aliases" reg:"Aliases" default:"" help:"Comma-delimited list of version aliases in the format alias=version." hidden:"true"`
 	AllowedSigners               []string `cfg:"allowed_signers" reg:"AllowedSigners" default:"Author Software Inc.,OpenJS Foundation,Node.js Foundation" help:"Comma-delimited list of allowed code signers." hidden:"true"`
 	LogExecutions                bool     `cfg:"log_executions" reg:"LogExecutions" default:"false" help:"Whether to log every Node.js invocation (ex: node file.js). (shim-only)" hidden:"false"`
-	Enabled                      bool     `cfg:"enabled" reg:"Enabled" default:"false" help:"Whether Node.js version management is enabled. This is automatically set when running 'nvm on' or 'nvm off'." hidden:"true"`
+	Enabled                      bool     `cfg:"enabled" reg:"Enabled" default:"true" help:"Whether Node.js version management is enabled. This is automatically set when running 'nvm on' or 'nvm off'." hidden:"true"`
 	AllowToolInstall             bool     `cfg:"allow_tool_install" reg:"AllowToolInstall" default:"true" help:"Whether to allow installation of native tools (nvm install native-tools)." hidden:"true"`
 	DisableAnnouncements         bool     `cfg:"disable_announcements" reg:"DisableAnnouncements" default:"false" help:"Whether to disable project and release announcements." hidden:"false"`
 	PackageManagerMismatchAction string   `cfg:"pm_mismatch_action" reg:"PackageManagerMismatchAction" default:"error" enum:"ignore,warn,error" help:"Action to take when a mismatch between npm and Node.js versions is detected during install or use: ignore, warn, or error."`

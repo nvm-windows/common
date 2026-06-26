@@ -221,6 +221,34 @@ func TestProxyAuth_LoadsLegacyMultiStringAsSingleValue(t *testing.T) {
 	}
 }
 
+func TestLoad_AppliesDefaultsWithoutRegistryValues(t *testing.T) {
+	oldRoot := prefs.ROOT
+	oldRoots := append([]string(nil), prefs.ROOTS...)
+	testRoot := testRegistryRoot + "/defaults"
+
+	prefs.ROOT = testRoot
+	prefs.ROOTS = []string{testRoot}
+	t.Cleanup(func() {
+		prefs.ROOT = oldRoot
+		prefs.ROOTS = oldRoots
+		settings.Load(true)
+	})
+
+	settings.Load(true)
+
+	if got := settings.Global().Mode; got != "shim" {
+		t.Fatalf("Global().Mode = %q, want %q", got, "shim")
+	}
+
+	wantRoot, err := settings.DefaultValue("root")
+	if err != nil {
+		t.Fatalf("DefaultValue(root) error = %v", err)
+	}
+	if got := settings.Global().Root; got != wantRoot {
+		t.Fatalf("Global().Root = %q, want %q", got, wantRoot)
+	}
+}
+
 // ── node_mirror ───────────────────────────────────────────────────────────────
 
 func TestNodeMirror_ValidURL(t *testing.T) {
