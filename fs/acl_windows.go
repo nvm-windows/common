@@ -26,7 +26,7 @@ const (
 		windows.WRITE_OWNER
 )
 
-var runtimeDataDirNames = []string{".shim", ".link", ".sync", ".cache", ".nodejs"}
+var runtimeDataDirNames = []string{".shim", ".link", ".sync", ".cache", ".nodejs", ".verify"}
 
 // IsRiskyManagedPath reports whether a directory should receive an explicit
 // restrictive DACL to prevent cross-user executable planting.
@@ -95,6 +95,9 @@ func HardenRuntimeLayout(installRoot, dataRoot string) {
 	_ = HardenManagedDirectory(installRoot)
 	for _, name := range runtimeDataDirNames {
 		_ = HardenManagedDirectory(filepath.Join(dataRoot, name))
+	}
+	for _, sub := range []string{"versions", "http"} {
+		_ = HardenManagedDirectory(filepath.Join(dataRoot, ".cache", sub))
 	}
 }
 
@@ -239,10 +242,7 @@ func hardenedExplicitAccess() ([]windows.EXPLICIT_ACCESS, func(), error) {
 	}
 
 	release := func() {
-		windows.FreeSid(systemSID)
-		windows.FreeSid(adminSID)
-		windows.FreeSid(authUsersSID)
-		windows.FreeSid(creatorOwnerSID)
+		// SID pointers are referenced by ACL construction; do not free here.
 	}
 
 	entries := []windows.EXPLICIT_ACCESS{

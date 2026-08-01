@@ -21,10 +21,14 @@ func (t *AccessToken) Expired() bool {
 }
 
 func (t *AccessToken) Type() string {
-	res := t.Claims.(*TokenClaims).Plan
+	claims, ok := t.Claims.(*TokenClaims)
+	if !ok || claims == nil {
+		return "community"
+	}
 
-	switch strings.ToLower(strings.TrimSpace(res)) {
-	case "community":
+	res := claims.LicenseType()
+	switch strings.ToLower(res) {
+	case "community", "":
 		return "community"
 	default:
 		if t.Valid {

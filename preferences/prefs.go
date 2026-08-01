@@ -12,6 +12,9 @@ var ROOT string
 var ROOTS []string
 var POLICY_ROOTS []string
 var ACL_ROOTS []string
+// SECURITY_POLICY_ROOTS restricts selected settings to HKLM policy only (certified).
+// Empty in OSS builds — security settings follow normal POLICY_ROOTS precedence.
+var SECURITY_POLICY_ROOTS []string
 var MACHINE_PREFERENCE_ROOT string
 var USER_PREFERENCE_ROOT string
 var MACHINE_POLICY_ROOT string
@@ -32,6 +35,7 @@ func reload() {
 	ROOTS = []string{MACHINE_POLICY_ROOT, USER_POLICY_ROOT, MACHINE_PREFERENCE_ROOT, ROOT}
 	POLICY_ROOTS = []string{MACHINE_POLICY_ROOT, USER_POLICY_ROOT}
 	ACL_ROOTS = []string{USER_POLICY_ROOT, MACHINE_POLICY_ROOT, MACHINE_PREFERENCE_ROOT}
+	SECURITY_POLICY_ROOTS = nil
 	NVM_CMD = joinRoot("HKCU/Software/Classes", app, "shell/open/command")
 }
 

@@ -23,8 +23,20 @@ var Access *AccessToken
 type TokenClaims struct {
 	jwt.RegisteredClaims
 	Plan  string   `json:"plan"`
+	Lic   string   `json:"lic"`
 	Roles []string `json:"roles"`
 	Tmp   bool     `json:"tmp"`
+}
+
+// LicenseType returns the commercial license type from lic, falling back to plan.
+func (c *TokenClaims) LicenseType() string {
+	if c == nil {
+		return ""
+	}
+	if lic := strings.TrimSpace(c.Lic); lic != "" {
+		return lic
+	}
+	return strings.TrimSpace(c.Plan)
 }
 
 type jwk struct {
@@ -42,6 +54,15 @@ type jwksEnvelope struct {
 }
 
 var errJWKSUnavailable = errors.New("jwks unavailable")
+
+// FailOpenOnJWKSUnavailable controls whether Set accepts an unverified token when
+// JWKS discovery is unreachable. OSS builds keep this true; certified enhanced
+// preferences init sets it false.
+var FailOpenOnJWKSUnavailable = true
+
+// AllowTemporaryTokenFallback controls whether licensing may mint an unsigned
+// temporary community token after verification or fetch failures.
+var AllowTemporaryTokenFallback = true
 
 const jwksFetchTimeout = 300 * time.Millisecond
 
@@ -89,8 +110,7 @@ func Set(raw string) error {
 
 	publicKey, err := fetchPublicKeyFromJKU(jku, kid)
 	if err != nil {
-		if errors.Is(err, errJWKSUnavailable) {
-			// If key discovery is unreachable/offline, fail open to keep startup responsive.
+		if FailOpenOnJWKSUnavailable && errors.Is(err, errJWKSUnavailable) {
 			Access = &AccessToken{Token: unverified}
 			return nil
 		}
@@ -112,6 +132,21 @@ func Set(raw string) error {
 	Access = &AccessToken{Token: verified}
 
 	return nil
+}
+
+// ParseUnverified parses a JWT access token without signature verification.
+func ParseUnverified(raw string) (*AccessToken, error) {
+	unverified, _, err := jwt.NewParser().ParseUnverified(raw, &TokenClaims{})
+	if err != nil {
+		return nil, err
+	}
+
+	return &AccessToken{Token: unverified}, nil
+}
+
+// IsJWKSUnavailable reports whether err is a JWKS fetch/connectivity failure.
+func IsJWKSUnavailable(err error) bool {
+	return errors.Is(err, errJWKSUnavailable)
 }
 
 func NewTemporaryToken(ttl time.Duration) (string, error) {

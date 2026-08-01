@@ -21,10 +21,13 @@ func Activate() error {
 		var err error
 		tkn, err = fetchToken()
 		if err != nil {
-			if fallbackErr := useTemporaryToken(); fallbackErr != nil {
-				return fmt.Errorf("Missing access token. Connect to the internet to obtain a free token or contact your system administrator for a commercial license: %w (temporary token fallback failed: %v)", err, fallbackErr)
+			if token.AllowTemporaryTokenFallback {
+				if fallbackErr := useTemporaryToken(); fallbackErr != nil {
+					return fmt.Errorf("Missing access token. Connect to the internet to obtain a free token or contact your system administrator for a commercial license: %w (temporary token fallback failed: %v)", err, fallbackErr)
+				}
+				return nil
 			}
-			return nil
+			return fmt.Errorf("Missing access token. Connect to the internet to obtain a free token or contact your system administrator for a commercial license: %w", err)
 		}
 
 		if err := settings.Put("access_token", tkn); err != nil {
@@ -33,10 +36,13 @@ func Activate() error {
 	}
 
 	if err := token.Set(tkn); err != nil {
-		if fallbackErr := useTemporaryToken(); fallbackErr != nil {
-			return fmt.Errorf("Failed to parse access token: %w (temporary token fallback failed: %v)", err, fallbackErr)
+		if token.AllowTemporaryTokenFallback {
+			if fallbackErr := useTemporaryToken(); fallbackErr != nil {
+				return fmt.Errorf("Failed to parse access token: %w (temporary token fallback failed: %v)", err, fallbackErr)
+			}
+			return nil
 		}
-		return nil
+		return fmt.Errorf("Failed to parse access token: %w", err)
 	}
 
 	AccessToken = token.Access
@@ -44,17 +50,23 @@ func Activate() error {
 	if AccessToken.Expired() {
 		tkn, fetchErr := fetchToken()
 		if fetchErr != nil {
-			if fallbackErr := useTemporaryToken(); fallbackErr != nil {
-				return fmt.Errorf("Access token expired and failed to fetch a new one: %w (temporary token fallback failed: %v)", fetchErr, fallbackErr)
+			if token.AllowTemporaryTokenFallback {
+				if fallbackErr := useTemporaryToken(); fallbackErr != nil {
+					return fmt.Errorf("Access token expired and failed to fetch a new one: %w (temporary token fallback failed: %v)", fetchErr, fallbackErr)
+				}
+				return nil
 			}
-			return nil
+			return fmt.Errorf("Access token expired and failed to fetch a new one: %w", fetchErr)
 		}
 
 		if err := token.Set(tkn); err != nil {
-			if fallbackErr := useTemporaryToken(); fallbackErr != nil {
-				return fmt.Errorf("Failed to parse access token: %w (temporary token fallback failed: %v)", err, fallbackErr)
+			if token.AllowTemporaryTokenFallback {
+				if fallbackErr := useTemporaryToken(); fallbackErr != nil {
+					return fmt.Errorf("Failed to parse access token: %w (temporary token fallback failed: %v)", err, fallbackErr)
+				}
+				return nil
 			}
-			return nil
+			return fmt.Errorf("Failed to parse access token: %w", err)
 		}
 
 		if err := settings.Put("access_token", tkn); err != nil {

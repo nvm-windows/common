@@ -4,6 +4,7 @@ import (
 	"common/fs"
 	prefs "common/preferences"
 	"common/registry"
+	"common/urlguard"
 	"fmt"
 	"net/url"
 	"os"
@@ -34,10 +35,49 @@ func List() []string {
 	return options
 }
 
+// IsHiddenCfg reports settings hidden from cfg list/docs output.
+func IsHiddenCfg(name string) bool {
+	field, ok := fieldByCfg(name)
+	if !ok {
+		return false
+	}
+
+	if IsLicensingCfg(name) || name == "active_version" || name == "root" {
+		return true
+	}
+
+	return field.Tag.Get("hidden") == "true"
+}
+
+// IsLicensingCfg reports machine licensing values managed by "nvm license set".
+func IsLicensingCfg(name string) bool {
+	return isLicensingSetting(name)
+}
+
+// IsBlockedFromCfgSet reports settings that cannot be changed with nvm cfg set/del.
+func IsBlockedFromCfgSet(name string) bool {
+	return IsLicensingCfg(name) || name == "active_version"
+}
+
+// ListUserCfg returns cfg keys exposed to nvm cfg set/get/del help and validation.
+func ListUserCfg() []string {
+	all := List()
+	out := make([]string, 0, len(all))
+	for _, name := range all {
+		if !IsBlockedFromCfgSet(name) {
+			out = append(out, name)
+		}
+	}
+
+	return out
+}
+
 func Load(reload ...bool) {
 	if loaded && (len(reload) == 0 || !reload[0]) {
 		return
 	}
+
+	globalSettings = Settings{}
 
 	values, err := registry.GetAll(prefs.ROOTS[0])
 	if err != nil {
@@ -100,6 +140,161 @@ func Load(reload ...bool) {
 	}
 
 	loaded = true
+	applySecurityPolicyOverrides()
+	applyMachineOnlySettings()
+}
+
+func isMachineOnlySetting(name string) bool {
+	return name == "access_key"
+}
+
+func isLicensingSetting(name string) bool {
+	return name == "access_token" || name == "access_key"
+}
+
+func putLicensingRegistryValue(value string, key string) error {
+	return registry.Put([]byte(strings.TrimSpace(value)), key)
+}
+
+func machineOnlyRegKeys(name string) []string {
+	if !isMachineOnlySetting(name) {
+		return nil
+	}
+
+	regName := key(name)
+	if regName == "" {
+		return nil
+	}
+
+	keys := make([]string, 0, 2)
+	if root := strings.TrimSpace(prefs.MACHINE_POLICY_ROOT); root != "" {
+		keys = append(keys, root+"/"+regName)
+	}
+	if root := strings.TrimSpace(prefs.MACHINE_PREFERENCE_ROOT); root != "" {
+		keys = append(keys, root+"/"+regName)
+	}
+
+	return keys
+}
+
+func applyMachineOnlySettings() {
+	keys := machineOnlyRegKeys("access_key")
+	if len(keys) == 0 {
+		return
+	}
+
+	value, exists, err := registry.Get(keys...)
+	if err != nil || !exists || value == nil {
+		globalSettings.AccessKey = ""
+		return
+	}
+
+	if normalized, ok := normalizeRegistryStringValue(value); ok {
+		globalSettings.AccessKey = normalized
+	}
+}
+
+func isSecurityPolicySetting(name string) bool {
+	switch name {
+	case "allowed_signers", "allow_insecure_downloads", "local_install_only":
+		return true
+	default:
+		return false
+	}
+}
+
+func securityPolicyRegKeys(name string) []string {
+	if len(prefs.SECURITY_POLICY_ROOTS) == 0 || !isSecurityPolicySetting(name) {
+		return nil
+	}
+
+	regName := key(name)
+	if regName == "" {
+		return nil
+	}
+
+	keys := make([]string, 0, len(prefs.SECURITY_POLICY_ROOTS))
+	for _, root := range prefs.SECURITY_POLICY_ROOTS {
+		root = strings.TrimSpace(root)
+		if root == "" {
+			continue
+		}
+		keys = append(keys, root+"/"+regName)
+	}
+
+	return keys
+}
+
+// securityPolicyLookupKeys resolves security settings from HKLM policy, then machine
+// and user preferences. HKCU policy is intentionally excluded (spoof resistance).
+func securityPolicyLookupKeys(name string) []string {
+	if !isSecurityPolicySetting(name) {
+		return nil
+	}
+
+	regName := key(name)
+	if regName == "" {
+		return nil
+	}
+
+	keys := securityPolicyRegKeys(name)
+
+	if root := strings.TrimSpace(prefs.MACHINE_PREFERENCE_ROOT); root != "" {
+		keys = append(keys, root+"/"+regName)
+	}
+	if root := strings.TrimSpace(prefs.USER_PREFERENCE_ROOT); root != "" {
+		keys = append(keys, root+"/"+regName)
+	}
+
+	return keys
+}
+
+func applySecurityPolicyOverrides() {
+	if len(prefs.SECURITY_POLICY_ROOTS) == 0 {
+		return
+	}
+
+	t := reflect.TypeOf(Settings{})
+	s := reflect.ValueOf(&globalSettings).Elem()
+
+	for i := 0; i < t.NumField(); i++ {
+		field := t.Field(i)
+		cfgName := field.Tag.Get("cfg")
+		if cfgName == "" || !isSecurityPolicySetting(cfgName) {
+			continue
+		}
+
+		keys := securityPolicyLookupKeys(cfgName)
+		if len(keys) == 0 {
+			continue
+		}
+
+		if field.Type.Kind() == reflect.Bool {
+			value, exists, err := registry.GetBool(keys...)
+			if err != nil {
+				continue
+			}
+			if exists {
+				s.Field(i).SetBool(value)
+				continue
+			}
+		} else {
+			value, exists, err := registry.Get(keys...)
+			if err != nil {
+				continue
+			}
+			if exists && value != nil {
+				if converted := convertRegistryValue(value, field.Type); converted != nil {
+					s.Field(i).Set(reflect.ValueOf(converted))
+					continue
+				}
+			}
+		}
+
+		if defaultVal, err := DefaultValue(cfgName); err == nil && defaultVal != nil {
+			s.Field(i).Set(reflect.ValueOf(defaultVal))
+		}
+	}
 }
 
 // convertRegistryValue converts a raw registry value to the target type.
@@ -236,7 +431,7 @@ func IsSecret(name string) bool {
 
 func HasChangeAudit(name string) bool {
 	switch name {
-	case "access_token":
+	case "access_token", "access_key":
 		return true
 	default:
 		return false
@@ -309,10 +504,28 @@ func ChangeAuditMessage(name string, currentValue, newValue interface{}) (string
 	}
 
 	if next == "" {
-		return "License key cleared.", true
+		return auditClearMessage(name), true
 	}
 
-	return "License key changed.", true
+	return auditChangeMessage(name), true
+}
+
+func auditChangeMessage(name string) string {
+	switch name {
+	case "access_key":
+		return "License key changed."
+	default:
+		return "Access token changed."
+	}
+}
+
+func auditClearMessage(name string) string {
+	switch name {
+	case "access_key":
+		return "License key cleared."
+	default:
+		return "Access token cleared."
+	}
 }
 
 func DeletionAuditMessage(name string, currentValue interface{}) (string, bool) {
@@ -324,7 +537,7 @@ func DeletionAuditMessage(name string, currentValue interface{}) (string, bool) 
 		return "", false
 	}
 
-	return "License key cleared.", true
+	return auditClearMessage(name), true
 }
 
 func key(name string) string {
@@ -344,7 +557,32 @@ func regkey(name string, root ...string) string {
 	return prefs.ROOT + "/" + key(name)
 }
 
+func lookupRegKeys(name string) []string {
+	if keys := machineOnlyRegKeys(name); len(keys) > 0 {
+		return keys
+	}
+
+	if keys := securityPolicyLookupKeys(name); len(keys) > 0 {
+		return keys
+	}
+
+	keys := make([]string, 0, len(prefs.ROOTS))
+	for _, root := range prefs.ROOTS {
+		keys = append(keys, regkey(name, root))
+	}
+
+	if len(keys) == 0 {
+		keys = append(keys, regkey(name))
+	}
+
+	return keys
+}
+
 func policyRegKeys(name string) []string {
+	if keys := securityPolicyRegKeys(name); len(keys) > 0 {
+		return keys
+	}
+
 	regName := key(name)
 	if regName == "" {
 		return nil
@@ -467,7 +705,7 @@ func Validate(name string, value interface{}) error {
 			if part == "" {
 				continue
 			}
-			if err := validateURL(name, part); err != nil {
+			if err := validateMirrorURL(name, part); err != nil {
 				return err
 			}
 		}
@@ -493,6 +731,19 @@ func validateURL(field, raw string) error {
 	return nil
 }
 
+func validateMirrorURL(field, raw string) error {
+	if err := validateURL(field, raw); err != nil {
+		return err
+	}
+
+	u, _ := url.Parse(strings.TrimSpace(raw))
+	if strings.EqualFold(u.Scheme, "http") && !Global().AllowInsecureDownloads {
+		return fmt.Errorf("%s %q must use https unless allow_insecure_downloads is enabled", field, raw)
+	}
+
+	return urlguard.ValidateRemoteHTTPURL(field, raw)
+}
+
 func Put(name string, value interface{}) error {
 	k := regkey(name)
 	if k == prefs.ROOT+"/" {
@@ -512,8 +763,8 @@ func Put(name string, value interface{}) error {
 
 	switch v := value.(type) {
 	case string:
-		if name == "access_token" {
-			putErr = registry.Put([]byte(v), k)
+		if isLicensingSetting(name) {
+			putErr = putLicensingRegistryValue(v, k)
 			break
 		}
 
@@ -558,20 +809,97 @@ func Put(name string, value interface{}) error {
 	return nil
 }
 
+// PutMachine writes a machine-scoped setting under HKLM preferences.
+func PutMachine(name string, value interface{}) error {
+	root := strings.TrimRight(strings.TrimSpace(prefs.MACHINE_PREFERENCE_ROOT), "/")
+	if root == "" {
+		return fmt.Errorf("machine preference root is not configured")
+	}
+
+	k := regkey(name, root)
+	if k == root+"/" {
+		return fmt.Errorf("unknown setting %q", name)
+	}
+
+	if err := ensureNotPolicyManaged(name); err != nil {
+		return err
+	}
+
+	if err := Validate(name, value); err != nil {
+		return err
+	}
+
+	field, _ := fieldByCfg(name)
+	var putErr error
+
+	switch v := value.(type) {
+	case string:
+		if isLicensingSetting(name) {
+			putErr = putLicensingRegistryValue(v, k)
+			break
+		}
+
+		switch {
+		case field.Type.Kind() == reflect.Bool:
+			b, err := parseBoolInput(v)
+			if err != nil {
+				return fmt.Errorf("%s must be 0, 1, true, or false", name)
+			}
+			putErr = registry.PutBool(b, k)
+		case field.Type == reflect.TypeOf([]string{}):
+			if strings.Contains(v, ",") {
+				putErr = registry.Put(strings.Split(v, ","), k)
+			} else {
+				putErr = registry.Put([]string{v}, k)
+			}
+		default:
+			putErr = registry.Put(v, k)
+		}
+	case bool:
+		putErr = registry.PutBool(v, k)
+	default:
+		return fmt.Errorf("unsupported value type %T for setting %q", value, name)
+	}
+
+	if putErr != nil {
+		return putErr
+	}
+
+	Load(true)
+	return nil
+}
+
+// DelMachine removes a machine-scoped setting from HKLM preferences.
+func DelMachine(name string) error {
+	root := strings.TrimRight(strings.TrimSpace(prefs.MACHINE_PREFERENCE_ROOT), "/")
+	if root == "" {
+		return fmt.Errorf("machine preference root is not configured")
+	}
+
+	k := regkey(name, root)
+	if k == root+"/" {
+		return fmt.Errorf("unknown setting %q", name)
+	}
+
+	if err := ensureNotPolicyManaged(name); err != nil {
+		return err
+	}
+
+	if err := registry.Del(k); err != nil {
+		return err
+	}
+
+	Load(true)
+	return nil
+}
+
 func Get(name string) (interface{}, error) {
 	regName := key(name)
 	if regName == "" {
 		return nil, fmt.Errorf("unknown setting %q", name)
 	}
 
-	keys := make([]string, 0, len(prefs.ROOTS))
-	for _, root := range prefs.ROOTS {
-		keys = append(keys, regkey(name, root))
-	}
-
-	if len(keys) == 0 {
-		keys = append(keys, regkey(name))
-	}
+	keys := lookupRegKeys(name)
 
 	field, ok := fieldByCfg(name)
 
@@ -657,6 +985,9 @@ func DefaultValue(name string) (interface{}, error) {
 
 	defaultRaw := strings.TrimSpace(field.Tag.Get("default"))
 	if defaultRaw == "" {
+		if name == "allowed_signers" {
+			return append([]string(nil), DefaultAllowedSigners...), nil
+		}
 		return nil, nil
 	}
 

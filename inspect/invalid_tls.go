@@ -6,7 +6,7 @@ func InvalidTLS() *Check {
 	fn := func(c *Check) error {
 		cfg := settings.Global()
 
-		if !cfg.DisableUpgrade {
+		if !cfg.AllowInsecureDownloads {
 			c.Warnings = []Problem{{
 				Name:   "Insecure Downloads",
 				Help:   "The computer's policy has disabled insecure TLS connections. Talk to your system administrator to enable insecure downloads.",

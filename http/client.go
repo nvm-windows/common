@@ -110,6 +110,7 @@ func makeRequest(method, url string) (*gohttp.Request, error) {
 	}
 
 	req.Header.Set("User-Agent", fmt.Sprintf("%s/%s (%s)", appname, version, edition))
+	applyExtraHeaders(req)
 
 	return req, nil
 }

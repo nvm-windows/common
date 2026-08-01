@@ -67,7 +67,7 @@ func withPolicyRoot(t *testing.T) {
 // ── mode ─────────────────────────────────────────────────────────────────────
 
 func TestMode_Valid(t *testing.T) {
-	for _, mode := range []string{"shim", "symlink", "junction"} {
+	for _, mode := range []string{"shim", "link"} {
 		t.Run(mode, func(t *testing.T) {
 			mustPut(t, "mode", mode)
 			got := mustGet(t, "mode")
@@ -79,7 +79,7 @@ func TestMode_Valid(t *testing.T) {
 }
 
 func TestMode_Invalid(t *testing.T) {
-	for _, bad := range []string{"", "nvm", "Shim", "SYMLINK", "auto"} {
+	for _, bad := range []string{"", "nvm", "Shim", "SYMLINK", "symlink", "junction", "auto"} {
 		t.Run(fmt.Sprintf("%q", bad), func(t *testing.T) {
 			wantPutError(t, "mode", bad)
 		})
@@ -88,6 +88,8 @@ func TestMode_Invalid(t *testing.T) {
 
 func TestPut_BlockedByPolicy(t *testing.T) {
 	withPolicyRoot(t)
+
+	_ = registry.Del(testRegistryRoot + "/OperatingMode")
 
 	if err := registry.Put("shim", testPolicyRegistryRoot+"/OperatingMode"); err != nil {
 		t.Fatalf("seed policy mode: %v", err)
@@ -283,6 +285,23 @@ func TestNodeMirror_OneInvalidInList(t *testing.T) {
 	wantPutError(t, "node_mirror", "https://valid.example.com,not-a-url")
 }
 
+func TestNodeMirror_RejectsPrivateHosts(t *testing.T) {
+	for _, bad := range []string{
+		"http://127.0.0.1/dist",
+		"https://localhost/dist",
+		"https://10.0.0.5/dist",
+		"https://169.254.169.254/latest/meta-data",
+	} {
+		t.Run(bad, func(t *testing.T) {
+			wantPutError(t, "node_mirror", bad)
+		})
+	}
+}
+
+func TestNodeMirror_RejectsHTTPWithoutInsecureDownloads(t *testing.T) {
+	wantPutError(t, "node_mirror", "http://mirror.example.com/dist")
+}
+
 // ── npm_mirror ────────────────────────────────────────────────────────────────
 
 func TestNpmMirror_ValidURL(t *testing.T) {
@@ -388,6 +407,68 @@ func TestAutoInstall_InvalidValues(t *testing.T) {
 		t.Run(fmt.Sprintf("%q", bad), func(t *testing.T) {
 			wantPutError(t, "auto_install", bad)
 		})
+	}
+}
+
+// ── access_token ──────────────────────────────────────────────────────────────
+
+func TestPut_AccessTokenPersistsAsBinary(t *testing.T) {
+	t.Cleanup(func() {
+		_ = settings.Del("access_token")
+		settings.Load(true)
+	})
+
+	const accessToken = "MC4CAQAwBQYDK2VwBCIEINUks/kSkf4G7ncYogBmjgrKj7k8bwf6MhbyIkChFELb"
+	mustPut(t, "access_token", accessToken)
+
+	raw, exists, err := registry.Get(testRegistryRoot + "/AccessToken")
+	if err != nil {
+		t.Fatalf("registry.Get(AccessToken) error = %v", err)
+	}
+	if !exists {
+		t.Fatal("registry.Get(AccessToken) exists = false, want true")
+	}
+	got, ok := raw.([]byte)
+	if !ok {
+		t.Fatalf("AccessToken stored as %T, want REG_BINARY", raw)
+	}
+	if string(got) != accessToken {
+		t.Fatalf("AccessToken = %q, want %q", got, accessToken)
+	}
+}
+
+func TestPut_AccessKeyPersistsAsBinary(t *testing.T) {
+	const machinePrefRoot = testRegistryRoot + "/machine_prefs"
+	oldMachinePref := prefs.MACHINE_PREFERENCE_ROOT
+	oldMachinePolicy := prefs.MACHINE_POLICY_ROOT
+	prefs.MACHINE_PREFERENCE_ROOT = machinePrefRoot
+	prefs.MACHINE_POLICY_ROOT = testPolicyRegistryRoot + "/unused"
+
+	t.Cleanup(func() {
+		prefs.MACHINE_PREFERENCE_ROOT = oldMachinePref
+		prefs.MACHINE_POLICY_ROOT = oldMachinePolicy
+		_ = registry.Del(machinePrefRoot + "/AccessKey")
+		settings.Load(true)
+	})
+
+	const accessKey = "MC4CAQAwBQYDK2VwBCIEINUks/kSkf4G7ncYogBmjgrKj7k8bwf6MhbyIkChFELb"
+	if err := settings.PutMachine("access_key", accessKey); err != nil {
+		t.Fatalf("PutMachine(access_key) error = %v", err)
+	}
+
+	raw, exists, err := registry.Get(machinePrefRoot + "/AccessKey")
+	if err != nil {
+		t.Fatalf("registry.Get(AccessKey) error = %v", err)
+	}
+	if !exists {
+		t.Fatal("registry.Get(AccessKey) exists = false, want true")
+	}
+	got, ok := raw.([]byte)
+	if !ok {
+		t.Fatalf("AccessKey stored as %T, want REG_BINARY", raw)
+	}
+	if string(got) != accessKey {
+		t.Fatalf("AccessKey = %q, want %q", got, accessKey)
 	}
 }
 

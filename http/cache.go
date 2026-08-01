@@ -1,14 +1,13 @@
 package http
 
 import (
+	"common/fs"
 	"common/settings"
 	"errors"
 	"io"
 	"os"
 	"path/filepath"
 	"strings"
-
-	"golang.org/x/sys/windows"
 )
 
 var httpCacheRoot = "http"
@@ -125,15 +124,8 @@ func GetCacheDir() (string, error) {
 		return "", err
 	}
 
-	// Hide the cache directory on Windows
-	cacheDirUTF16, err := windows.UTF16PtrFromString(cacheDir)
-	if err != nil {
-		return "", err
-	}
-
-	// FILE_ATTRIBUTE_HIDDEN = 0x02
-	const FILE_ATTRIBUTE_HIDDEN = 0x02
-	_ = windows.SetFileAttributes(cacheDirUTF16, FILE_ATTRIBUTE_HIDDEN)
+	fs.HideDirectory(filepath.Dir(cacheDir))
+	fs.HideDirectory(cacheDir)
 
 	return cacheDir, nil
 }

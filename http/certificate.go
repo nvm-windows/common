@@ -12,6 +12,10 @@ import (
 
 // VerifyCertificate retrieves and validates the TLS certificate for a HTTPS URL.
 // It returns whether the certificate is valid and, when invalid, the reason.
+//
+// InsecureSkipVerify is set so the TLS handshake succeeds even when the chain is
+// invalid; callers must use the returned bool — never treat a successful dial as
+// proof of validity. leaf.Verify against the system trust store runs after connect.
 func VerifyCertificate(rawURL string) (bool, string) {
 	normalized, err := normalizeURL(rawURL)
 	if err != nil {

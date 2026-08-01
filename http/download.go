@@ -126,8 +126,17 @@ func downloadInternal(ctx context.Context, url string, cfg DownloadConfig, progr
 		// HTTP/2 stream errors can occur in elevated/admin Windows contexts due to
 		// differences in system proxy routing. Retry with HTTP/1.1 forced.
 		if strings.Contains(err.Error(), "stream error") {
-			req2, _ := makeRequest("GET", url)
+			req2, reqErr := makeRequest("GET", url)
+			if reqErr != nil {
+				return nil, reqErr
+			}
 			req2 = req2.WithContext(ctx)
+			for k, v := range req.Header {
+				if len(v) == 0 {
+					continue
+				}
+				req2.Header.Set(k, v[0])
+			}
 			res, err = h1only(cfg.AllowInsecure).client.Do(req2)
 		}
 		if err != nil {
