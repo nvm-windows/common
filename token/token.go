@@ -24,6 +24,7 @@ type TokenClaims struct {
 	jwt.RegisteredClaims
 	Plan  string   `json:"plan"`
 	Lic   string   `json:"lic"`
+	Org   string   `json:"org"`
 	Roles []string `json:"roles"`
 	Tmp   bool     `json:"tmp"`
 }

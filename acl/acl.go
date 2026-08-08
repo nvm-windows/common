@@ -9,3 +9,8 @@ func Implementation() string {
 func IsAllowedVersion(version string) (bool, error) {
 	return true, nil
 }
+
+// MirrorAllowClaim is the Author-mirror JWT "versions" claim. Stub always returns ["ALL"].
+func MirrorAllowClaim() ([]string, error) {
+	return []string{"ALL"}, nil
+}

@@ -24,3 +24,15 @@ const AuthorizationHeader = "Authorization"
 func HeadersForURL(u *url.URL) map[string]string {
 	return nil
 }
+
+// ClearCachedLicenseJWT drops the in-process cached mirror license JWT, if any.
+// OSS builds have no license JWT cache, so this always returns false.
+func ClearCachedLicenseJWT() bool {
+	return false
+}
+
+// SetAllowClaimFunc is a no-op in OSS builds.
+func SetAllowClaimFunc(fn func() ([]string, error)) {}
+
+// AllowVersionClaimExpansion is always true in OSS builds (no JWT builder).
+func AllowVersionClaimExpansion() bool { return true }
