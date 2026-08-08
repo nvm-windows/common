@@ -18,6 +18,7 @@ const testPolicyRegistryRoot = "HKCU/Software/NVMTest/Policies/settings_test"
 
 func TestMain(m *testing.M) {
 	prefs.ROOT = testRegistryRoot
+	prefs.USER_PREFERENCE_ROOT = testRegistryRoot
 	prefs.ROOTS = []string{prefs.ROOT}
 	code := m.Run()
 	// Best-effort cleanup: remove the entire NVMTest hive used by these tests.

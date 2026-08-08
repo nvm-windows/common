@@ -2,7 +2,6 @@ package license
 
 import (
 	"common/settings"
-	"common/token"
 	"strings"
 	"unicode"
 )
@@ -17,31 +16,24 @@ var accessTokenForEdition = func() string {
 // access token is parsed without contacting the licensing service so help output
 // stays offline. Missing, invalid, and temporary tokens report the community edition.
 func Edition() string {
-	raw := accessTokenForEdition()
-	if raw == "" {
+	licenseType, ok := commercialLicenseType(accessTokenForEdition())
+	if !ok {
 		return communityEdition
 	}
-
-	parsed, err := token.ParseUnverified(raw)
-	if err != nil || parsed == nil || parsed.Claims == nil {
-		return communityEdition
-	}
-
-	claims, ok := parsed.Claims.(*token.TokenClaims)
-	if !ok || claims == nil || claims.Tmp {
-		return communityEdition
-	}
-
-	licenseType := strings.TrimSpace(claims.LicenseType())
-	if licenseType == "" {
-		return communityEdition
-	}
-
 	return editionLabel(licenseType)
 }
 
 func editionLabel(licenseType string) string {
-	runes := []rune(strings.ToLower(licenseType))
-	runes[0] = unicode.ToUpper(runes[0])
-	return string(runes)
+	switch strings.ToLower(strings.TrimSpace(licenseType)) {
+	case "compliance", "audit":
+		return "Audit"
+	case "governance":
+		return "Governance"
+	case "community", "":
+		return communityEdition
+	default:
+		runes := []rune(strings.ToLower(strings.TrimSpace(licenseType)))
+		runes[0] = unicode.ToUpper(runes[0])
+		return string(runes)
+	}
 }

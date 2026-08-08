@@ -27,12 +27,13 @@ type Settings struct {
 	LastUpdateCheck              string   `cfg:"last_update_check" reg:"LastUpdateCheck" help:"The last time updates were checked." hidden:"true"`
 	LastNewsCheck                string   `cfg:"last_news_check" reg:"LastNewsCheck" help:"The last time news was checked." hidden:"true"`
 	LastSyncCheck                string   `cfg:"last_sync_check" reg:"LastSyncCheck" help:"The last time sync app was updated." hidden:"true"`
+	LastLicenseNotice            string   `cfg:"last_license_notice" reg:"LastLicenseNotice" help:"Dedupe key for the last license expiry desktop notice." hidden:"true"`
 	Aliases                      []string `cfg:"aliases" reg:"Aliases" default:"" help:"Comma-delimited list of version aliases in the format alias=version." hidden:"true"`
 	AllowedSigners               []string `cfg:"allowed_signers" reg:"AllowedSigners" help:"Comma-delimited signer organization names (O=) allowed after Authenticode chain verification. Use to restrict vendors (for example OpenJS Foundation vs NodeSource)." hidden:"true"`
 	LogExecutions                bool     `cfg:"log_executions" reg:"LogExecutions" default:"false" help:"Whether to log every Node.js invocation (ex: node file.js). (shim-only)" hidden:"false"`
 	Enabled                      bool     `cfg:"enabled" reg:"Enabled" default:"true" help:"Whether Node.js version management is enabled. This is automatically set when running 'nvm on' or 'nvm off'." hidden:"true"`
 	AllowToolInstall             bool     `cfg:"allow_tool_install" reg:"AllowToolInstall" default:"true" help:"Whether to allow installation of native tools (nvm install native-tools)." hidden:"true"`
-	DisableAnnouncements         bool     `cfg:"disable_announcements" reg:"DisableAnnouncements" default:"false" help:"Whether to disable project and release announcements." hidden:"false"`
+	DisableAnnouncements         bool     `cfg:"disable_announcements" reg:"DisableAnnouncements" default:"false" help:"Whether to disable project and release announcements. License expiry warnings still run." hidden:"false"`
 	PackageManagerMismatchAction string   `cfg:"pm_mismatch_action" reg:"PackageManagerMismatchAction" default:"error" enum:"ignore,warn,error" help:"Action to take when a mismatch between npm and Node.js versions is detected during install or use: ignore, warn, or error."`
 	AccessToken                  string   `cfg:"access_token" reg:"AccessToken" hidden:"true" secret:"true"`
 	AccessKey                    string   `cfg:"access_key" reg:"AccessKey" hidden:"true" secret:"true" help:"Machine license key used to authenticate downloads from Author mirrors."`

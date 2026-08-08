@@ -2,6 +2,7 @@ package license
 
 import (
 	"testing"
+	"time"
 )
 
 func TestEditionReportsLicensedEdition(t *testing.T) {
@@ -10,7 +11,8 @@ func TestEditionReportsLicensedEdition(t *testing.T) {
 		want        string
 	}{
 		{licenseType: "governance", want: "Governance"},
-		{licenseType: "compliance", want: "Compliance"},
+		{licenseType: "compliance", want: "Audit"},
+		{licenseType: "audit", want: "Audit"},
 		{licenseType: "COMMUNITY", want: "Community"},
 	} {
 		t.Run(tt.licenseType, func(t *testing.T) {
@@ -27,6 +29,7 @@ func TestEditionFallsBackToCommunity(t *testing.T) {
 		"missing token":   "",
 		"invalid token":   "not-a-jwt",
 		"temporary token": mustMintAccessToken(t, "governance", true),
+		"expired token":   mustMintAccessTokenExpiringAt(t, "governance", time.Now().Add(-FeatureGracePeriod-time.Hour)),
 	} {
 		t.Run(name, func(t *testing.T) {
 			withEditionToken(t, raw)

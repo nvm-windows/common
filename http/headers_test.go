@@ -14,6 +14,9 @@ func TestApplyExtraHeadersIgnoresNonMirrorHost(t *testing.T) {
 	if got := req.Header.Get("X-Author-License"); got != "" {
 		t.Fatalf("X-Author-License = %q, want empty for non-mirror host", got)
 	}
+	if got := req.Header.Get("Authorization"); got != "" {
+		t.Fatalf("Authorization = %q, want empty for non-mirror host", got)
+	}
 }
 
 func TestApplyExtraHeadersUsesMirrorAuthHook(t *testing.T) {

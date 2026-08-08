@@ -23,6 +23,16 @@ type Client struct {
 }
 
 func new(allowInsecure ...bool) *Client {
+	return NewClient(30*time.Second, allowInsecure...)
+}
+
+// NewClient returns an HTTP client that injects Author mirror auth headers
+// (Bearer access token) for *.author.io hosts.
+func NewClient(timeout time.Duration, allowInsecure ...bool) *Client {
+	if timeout <= 0 {
+		timeout = 30 * time.Second
+	}
+
 	transport := gohttp.DefaultTransport.(*gohttp.Transport).Clone()
 	transport.Proxy = proxyURLForRequest
 	if len(allowInsecure) > 0 && allowInsecure[0] {
@@ -31,7 +41,7 @@ func new(allowInsecure ...bool) *Client {
 
 	return &Client{
 		client: &gohttp.Client{
-			Timeout:   30 * time.Second,
+			Timeout:   timeout,
 			Transport: proxy.WrapTransport(transport),
 		},
 	}
@@ -80,7 +90,7 @@ func (c *Client) Delete(url string) (*gohttp.Response, error) {
 }
 
 func (c *Client) Request(req *gohttp.Request) (*gohttp.Response, error) {
-	// Implement the custom request logic here
+	applyExtraHeaders(req)
 	return c.client.Do(req)
 }
 

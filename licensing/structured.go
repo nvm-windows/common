@@ -2,55 +2,28 @@ package license
 
 import (
 	"common/settings"
-	"common/token"
 	"strings"
-	"sync"
 )
 
-var (
-	structuredMu            sync.Mutex
-	structuredCachedToken   string
-	structuredLoggingCached bool
-
-	accessTokenForStructuredLogging = func() string {
-		return strings.TrimSpace(settings.Global().AccessToken)
-	}
-)
+var accessTokenForStructuredLogging = func() string {
+	return strings.TrimSpace(settings.Global().AccessToken)
+}
 
 // AllowsStructuredLogging reports whether the configured access token authorizes
-// structured (SIEM) event logging. Only compliance and governance licenses qualify.
-// Other plans, missing tokens, and invalid tokens fall back to unstructured logging.
+// structured (SIEM) event logging. Only a non-expired compliance (Audit) or
+// governance license qualifies. Other plans, missing/tmp/expired tokens, and
+// not-yet-valid tokens fall back to unstructured logging.
 func AllowsStructuredLogging() bool {
-	raw := accessTokenForStructuredLogging()
-
-	structuredMu.Lock()
-	defer structuredMu.Unlock()
-
-	if raw == structuredCachedToken {
-		return structuredLoggingCached
-	}
-
-	structuredCachedToken = raw
-	structuredLoggingCached = licenseTypeAllowsStructured(raw)
-	return structuredLoggingCached
+	// No time-insensitive cache: exp can elapse while the same JWT is still configured.
+	return licenseTypeAllowsStructured(accessTokenForStructuredLogging())
 }
 
 func licenseTypeAllowsStructured(raw string) bool {
-	if raw == "" {
+	licenseType, ok := commercialLicenseType(raw)
+	if !ok {
 		return false
 	}
-
-	parsed, err := token.ParseUnverified(raw)
-	if err != nil || parsed == nil || parsed.Claims == nil {
-		return false
-	}
-
-	claims, ok := parsed.Claims.(*token.TokenClaims)
-	if !ok || claims == nil || claims.Tmp {
-		return false
-	}
-
-	switch strings.ToLower(claims.LicenseType()) {
+	switch licenseType {
 	case "compliance", "governance":
 		return true
 	default:

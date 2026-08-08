@@ -38,7 +38,7 @@ func InspectAccessToken() (LicenseInfo, bool) {
 		if token.IsJWKSUnavailable(err) {
 			info.Verification = "cannot verify without internet connection"
 		} else {
-			info.Verification = "configured, verification failed"
+			info.Verification = "configured, verification failed: " + err.Error()
 		}
 		return info, true
 	}
@@ -65,7 +65,7 @@ func licenseInfoFromToken(access *token.AccessToken) LicenseInfo {
 		return info
 	}
 
-	info.Plan = claims.LicenseType()
+	info.Plan = editionLabel(claims.LicenseType())
 	info.Roles = claims.Roles
 	if claims.IssuedAt != nil {
 		info.Issued = formatLicenseTime(claims.IssuedAt.Time)

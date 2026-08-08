@@ -48,6 +48,25 @@ func TestAllowsStructuredLoggingRejectsTemporaryToken(t *testing.T) {
 	})
 }
 
+func TestAllowsStructuredLoggingGraceThenRejects(t *testing.T) {
+	for _, licenseType := range []string{"compliance", "governance"} {
+		t.Run(licenseType+" grace", func(t *testing.T) {
+			withStructuredToken(t, mustMintAccessTokenExpiringAt(t, licenseType, time.Now().Add(-time.Hour)), func() {
+				if !AllowsStructuredLogging() {
+					t.Fatal("token in 7-day grace should allow structured logging")
+				}
+			})
+		})
+		t.Run(licenseType+" post-grace", func(t *testing.T) {
+			withStructuredToken(t, mustMintAccessTokenExpiringAt(t, licenseType, time.Now().Add(-FeatureGracePeriod-time.Hour)), func() {
+				if AllowsStructuredLogging() {
+					t.Fatal("token past grace must not allow structured logging")
+				}
+			})
+		})
+	}
+}
+
 func TestLicenseTypePrefersLicClaim(t *testing.T) {
 	claims := &token.TokenClaims{Lic: "compliance", Plan: "community"}
 	if got := claims.LicenseType(); got != "compliance" {
@@ -57,26 +76,31 @@ func TestLicenseTypePrefersLicClaim(t *testing.T) {
 
 func withStructuredToken(t *testing.T, raw string, fn func()) {
 	t.Helper()
-	resetStructuredCache()
 	orig := accessTokenForStructuredLogging
 	accessTokenForStructuredLogging = func() string { return raw }
-	t.Cleanup(func() {
-		accessTokenForStructuredLogging = orig
-		resetStructuredCache()
-	})
+	t.Cleanup(func() { accessTokenForStructuredLogging = orig })
 	fn()
 }
 
 func mustMintAccessToken(t *testing.T, licenseType string, tmp bool) string {
 	t.Helper()
+	return mustMintAccessTokenExpiringAt(t, licenseType, time.Now().Add(time.Hour), tmp)
+}
+
+func mustMintAccessTokenExpiringAt(t *testing.T, licenseType string, exp time.Time, tmp ...bool) string {
+	t.Helper()
+	isTmp := false
+	if len(tmp) > 0 {
+		isTmp = tmp[0]
+	}
 	now := time.Now()
 	claims := &token.TokenClaims{
 		RegisteredClaims: jwt.RegisteredClaims{
-			IssuedAt:  jwt.NewNumericDate(now),
-			ExpiresAt: jwt.NewNumericDate(now.Add(time.Hour)),
+			IssuedAt:  jwt.NewNumericDate(now.Add(-time.Minute)),
+			ExpiresAt: jwt.NewNumericDate(exp),
 		},
 		Lic: licenseType,
-		Tmp: tmp,
+		Tmp: isTmp,
 	}
 	tok := jwt.NewWithClaims(jwt.SigningMethodNone, claims)
 	raw, err := tok.SignedString(jwt.UnsafeAllowNoneSignatureType)
@@ -84,11 +108,4 @@ func mustMintAccessToken(t *testing.T, licenseType string, tmp bool) string {
 		t.Fatalf("SignedString() error = %v", err)
 	}
 	return raw
-}
-
-func resetStructuredCache() {
-	structuredMu.Lock()
-	defer structuredMu.Unlock()
-	structuredCachedToken = ""
-	structuredLoggingCached = false
 }

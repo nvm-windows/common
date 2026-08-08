@@ -13,6 +13,7 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
+	"time"
 )
 
 var AppId string
@@ -142,6 +143,7 @@ func Load(reload ...bool) {
 	loaded = true
 	applySecurityPolicyOverrides()
 	applyMachineOnlySettings()
+	applyAnnouncementWatermarkOverrides()
 }
 
 func isMachineOnlySetting(name string) bool {
@@ -557,8 +559,86 @@ func regkey(name string, root ...string) string {
 	return prefs.ROOT + "/" + key(name)
 }
 
+func isAnnouncementWatermarkSetting(name string) bool {
+	switch name {
+	case "last_news_check", "last_update_check", "last_sync_check":
+		return true
+	default:
+		return false
+	}
+}
+
+func announcementWatermarkRegKeys(name string) []string {
+	if !isAnnouncementWatermarkSetting(name) {
+		return nil
+	}
+	regName := key(name)
+	if regName == "" {
+		return nil
+	}
+	keys := make([]string, 0, 2)
+	if root := strings.TrimSpace(prefs.USER_PREFERENCE_ROOT); root != "" {
+		keys = append(keys, root+"/"+regName)
+	} else if root := strings.TrimSpace(prefs.ROOT); root != "" {
+		keys = append(keys, root+"/"+regName)
+	}
+	if root := strings.TrimSpace(prefs.MACHINE_PREFERENCE_ROOT); root != "" {
+		keys = append(keys, root+"/"+regName)
+	}
+	return keys
+}
+
+func applyAnnouncementWatermarkOverrides() {
+	t := reflect.TypeOf(Settings{})
+	s := reflect.ValueOf(&globalSettings).Elem()
+	for i := 0; i < t.NumField(); i++ {
+		field := t.Field(i)
+		cfgName := field.Tag.Get("cfg")
+		if !isAnnouncementWatermarkSetting(cfgName) {
+			continue
+		}
+		keys := announcementWatermarkRegKeys(cfgName)
+		if len(keys) == 0 {
+			continue
+		}
+		value, exists, err := registry.Get(keys...)
+		if err != nil || !exists || value == nil {
+			continue
+		}
+		if normalized, ok := normalizeRegistryStringValue(value); ok {
+			s.Field(i).Set(reflect.ValueOf(normalized))
+		}
+	}
+}
+
+// SeedAnnouncementWatermarksIfEmpty writes last news/update/sync check timestamps
+// when unset. put is typically Put (HKCU) or PutMachine (HKLM installer seed).
+func SeedAnnouncementWatermarksIfEmpty(put func(name string, value interface{}) error) error {
+	if put == nil {
+		return fmt.Errorf("watermark put function is required")
+	}
+	now := time.Now().Format("2006-01-02 15:04:05")
+	for _, name := range []string{"last_news_check", "last_update_check", "last_sync_check"} {
+		value, err := Get(name)
+		if err == nil {
+			raw := strings.TrimSpace(fmt.Sprint(value))
+			if raw != "" && raw != "<nil>" {
+				continue
+			}
+		}
+		if err := put(name, now); err != nil {
+			return fmt.Errorf("seed %s: %w", name, err)
+		}
+	}
+	return nil
+}
+
 func lookupRegKeys(name string) []string {
 	if keys := machineOnlyRegKeys(name); len(keys) > 0 {
+		return keys
+	}
+
+	if keys := announcementWatermarkRegKeys(name); len(keys) > 0 {
 		return keys
 	}
 

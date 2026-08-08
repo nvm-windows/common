@@ -25,9 +25,15 @@ type TokenClaims struct {
 	Plan  string   `json:"plan"`
 	Lic   string   `json:"lic"`
 	Org   string   `json:"org"`
+	JKU   string   `json:"jku,omitempty"`
 	Roles []string `json:"roles"`
 	Tmp   bool     `json:"tmp"`
 }
+
+const (
+	defaultJWKSURL   = "https://licensing.author.io/.well-known/jwks"
+	allowedJKUOrigin = "https://licensing.author.io"
+)
 
 // LicenseType returns the commercial license type from lic, falling back to plan.
 func (c *TokenClaims) LicenseType() string {
@@ -65,7 +71,7 @@ var FailOpenOnJWKSUnavailable = true
 // temporary community token after verification or fetch failures.
 var AllowTemporaryTokenFallback = true
 
-const jwksFetchTimeout = 300 * time.Millisecond
+const jwksFetchTimeout = 1000 * time.Millisecond
 
 var jwksHTTPClient = &gohttp.Client{
 	Transport: &gohttp.Transport{
@@ -95,13 +101,9 @@ func Set(raw string) error {
 		return nil
 	}
 
-	jku, ok := unverified.Header["jku"].(string)
-	if !ok || jku == "" {
-		return fmt.Errorf("token header missing jku")
-	}
-
-	if !strings.HasPrefix(jku, "https://licensing.author.io/") {
-		return fmt.Errorf("invalid jku URL: %s", jku)
+	jku, err := resolveJKU(unverified.Header, claims)
+	if err != nil {
+		return err
 	}
 
 	kid, ok := unverified.Header["kid"].(string)
@@ -109,7 +111,7 @@ func Set(raw string) error {
 		return fmt.Errorf("token header missing kid")
 	}
 
-	publicKey, err := fetchPublicKeyFromJKU(jku, kid)
+	publicKey, err := fetchPublicKeyFromJKU(jku, kid, raw)
 	if err != nil {
 		if FailOpenOnJWKSUnavailable && errors.Is(err, errJWKSUnavailable) {
 			Access = &AccessToken{Token: unverified}
@@ -172,7 +174,26 @@ func NewTemporaryToken(ttl time.Duration) (string, error) {
 	return token, nil
 }
 
-func fetchPublicKeyFromJKU(jkuURL, kid string) (*ecdsa.PublicKey, error) {
+func resolveJKU(header map[string]interface{}, claims *TokenClaims) (string, error) {
+	jku := ""
+	if header != nil {
+		if v, ok := header["jku"].(string); ok {
+			jku = strings.TrimSpace(v)
+		}
+	}
+	if jku == "" && claims != nil {
+		jku = strings.TrimSpace(claims.JKU)
+	}
+	if jku == "" || strings.TrimRight(jku, "/") == allowedJKUOrigin {
+		jku = defaultJWKSURL
+	}
+	if !strings.HasPrefix(jku, allowedJKUOrigin+"/") {
+		return "", fmt.Errorf("invalid jku URL: %s", jku)
+	}
+	return jku, nil
+}
+
+func fetchPublicKeyFromJKU(jkuURL, kid, accessToken string) (*ecdsa.PublicKey, error) {
 	type jwksResult struct {
 		key *ecdsa.PublicKey
 		err error
@@ -181,7 +202,7 @@ func fetchPublicKeyFromJKU(jkuURL, kid string) (*ecdsa.PublicKey, error) {
 	result := make(chan jwksResult, 1)
 
 	go func() {
-		key, err := fetchPublicKeyFromJKUSync(jkuURL, kid)
+		key, err := fetchPublicKeyFromJKUSync(jkuURL, kid, accessToken)
 		result <- jwksResult{key: key, err: err}
 	}()
 
@@ -193,13 +214,16 @@ func fetchPublicKeyFromJKU(jkuURL, kid string) (*ecdsa.PublicKey, error) {
 	}
 }
 
-func fetchPublicKeyFromJKUSync(jkuURL, kid string) (*ecdsa.PublicKey, error) {
+func fetchPublicKeyFromJKUSync(jkuURL, kid, accessToken string) (*ecdsa.PublicKey, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), jwksFetchTimeout)
 	defer cancel()
 
 	req, err := gohttp.NewRequestWithContext(ctx, gohttp.MethodGet, jkuURL, nil)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create jwks request: %w", err)
+	}
+	if accessToken = strings.TrimSpace(accessToken); accessToken != "" {
+		req.Header.Set("Authorization", "Bearer "+accessToken)
 	}
 
 	resp, err := jwksHTTPClient.Do(req)
