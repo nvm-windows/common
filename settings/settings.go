@@ -198,7 +198,7 @@ func applyMachineOnlySettings() {
 
 func isSecurityPolicySetting(name string) bool {
 	switch name {
-	case "allowed_signers", "allow_insecure_downloads", "local_install_only":
+	case "allowed_signers", "allow_insecure_downloads", "local_install_only", "air_gapped":
 		return true
 	default:
 		return false
@@ -1144,4 +1144,64 @@ func Values(includeHidden ...bool) (map[string]interface{}, error) {
 	}
 
 	return values, nil
+}
+
+func jwksCoseLookupKeys() []string {
+	keys := make([]string, 0, 2)
+	if root := strings.TrimSpace(prefs.MACHINE_POLICY_ROOT); root != "" {
+		keys = append(keys, root+"/JwksCose")
+	}
+	if root := strings.TrimSpace(prefs.MACHINE_PREFERENCE_ROOT); root != "" {
+		keys = append(keys, root+"/JwksCose")
+	}
+	return keys
+}
+
+// JwksCoseBytes returns the COSE Sign1 JWKS blob from HKLM policy then prefs.
+func JwksCoseBytes() []byte {
+	keys := jwksCoseLookupKeys()
+	if len(keys) == 0 {
+		return nil
+	}
+
+	value, exists, err := registry.Get(keys...)
+	if err != nil || !exists || value == nil {
+		return nil
+	}
+
+	switch v := value.(type) {
+	case []byte:
+		if len(v) == 0 {
+			return nil
+		}
+		out := make([]byte, len(v))
+		copy(out, v)
+		return out
+	default:
+		return nil
+	}
+}
+
+// PutJwksCose writes the COSE JWKS blob to HKLM machine preferences.
+func PutJwksCose(blob []byte) error {
+	root := strings.TrimRight(strings.TrimSpace(prefs.MACHINE_PREFERENCE_ROOT), "/")
+	if root == "" {
+		return fmt.Errorf("machine preference root is not configured")
+	}
+	if len(blob) == 0 {
+		return fmt.Errorf("jwks cose blob is empty")
+	}
+	if err := registry.Put(blob, root+"/JwksCose"); err != nil {
+		return err
+	}
+	return nil
+}
+
+// DelJwksCose removes the COSE JWKS blob from HKLM machine preferences.
+func DelJwksCose() error {
+	root := strings.TrimRight(strings.TrimSpace(prefs.MACHINE_PREFERENCE_ROOT), "/")
+	if root == "" {
+		return fmt.Errorf("machine preference root is not configured")
+	}
+	return registry.Del(root + "/JwksCose")
 }

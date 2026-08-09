@@ -17,7 +17,7 @@ type LicenseInfo struct {
 }
 
 // InspectAccessToken loads the configured access token and optionally verifies it.
-// Verification is best-effort for nvm env only; airgapped hosts may be unable to reach JWKS.
+// Verification is best-effort for nvm env: live JWKS first, then offline COSE JWKS.
 func InspectAccessToken() (LicenseInfo, bool) {
 	raw := strings.TrimSpace(settings.Global().AccessToken)
 	if raw == "" {
@@ -46,8 +46,19 @@ func InspectAccessToken() (LicenseInfo, bool) {
 	if token.Access != nil {
 		info = licenseInfoFromToken(token.Access)
 	}
-	info.Verification = "verified"
+	info.Verification = accessTokenVerificationLabel()
 	return info, true
+}
+
+func accessTokenVerificationLabel() string {
+	switch token.LastVerifySource {
+	case token.VerifySourceLive:
+		return "verified (live JWKS)"
+	case token.VerifySourceOffline:
+		return "verified (offline JWKS)"
+	default:
+		return "verified"
+	}
 }
 
 func licenseInfoFromToken(access *token.AccessToken) LicenseInfo {

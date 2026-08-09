@@ -86,6 +86,8 @@ var jwksHTTPClient = &gohttp.Client{
 }
 
 func Set(raw string) error {
+	LastVerifySource = VerifySourceNone
+
 	unverified, _, err := jwt.NewParser().ParseUnverified(raw, &TokenClaims{})
 	if err != nil {
 		return err
@@ -111,7 +113,7 @@ func Set(raw string) error {
 		return fmt.Errorf("token header missing kid")
 	}
 
-	publicKey, err := fetchPublicKeyFromJKU(jku, kid, raw)
+	publicKey, err := fetchPublicKeyForJWT(jku, kid, raw)
 	if err != nil {
 		if FailOpenOnJWKSUnavailable && errors.Is(err, errJWKSUnavailable) {
 			Access = &AccessToken{Token: unverified}
@@ -245,15 +247,9 @@ func fetchPublicKeyFromJKUSync(jkuURL, kid, accessToken string) (*ecdsa.PublicKe
 		return nil, fmt.Errorf("failed to read jwks response: %w", err)
 	}
 
-	keys := []jwk{}
-
-	var envelope jwksEnvelope
-	if err := json.Unmarshal(body, &envelope); err == nil && len(envelope.Keys) > 0 {
-		keys = envelope.Keys
-	} else {
-		if err := json.Unmarshal(body, &keys); err != nil {
-			return nil, fmt.Errorf("failed to parse jwks: %w", err)
-		}
+	keys, err := parseJWKSKeys(body)
+	if err != nil {
+		return nil, err
 	}
 
 	for _, key := range keys {
@@ -270,6 +266,19 @@ func fetchPublicKeyFromJKUSync(jkuURL, kid, accessToken string) (*ecdsa.PublicKe
 	}
 
 	return nil, fmt.Errorf("no jwk found for kid %q", kid)
+}
+
+func parseJWKSKeys(body []byte) ([]jwk, error) {
+	var envelope jwksEnvelope
+	if err := json.Unmarshal(body, &envelope); err == nil && len(envelope.Keys) > 0 {
+		return envelope.Keys, nil
+	}
+
+	keys := []jwk{}
+	if err := json.Unmarshal(body, &keys); err != nil {
+		return nil, fmt.Errorf("failed to parse jwks: %w", err)
+	}
+	return keys, nil
 }
 
 func jwkToECDSAPublicKey(key jwk) (*ecdsa.PublicKey, error) {

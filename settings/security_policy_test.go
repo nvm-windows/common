@@ -46,6 +46,84 @@ func TestLoadIgnoresHKCUForSecurityPolicySettings(t *testing.T) {
 	}
 }
 
+func TestLoadAirGappedFromHKLMPolicyOnly(t *testing.T) {
+	oldSecurityRoots := append([]string(nil), prefs.SECURITY_POLICY_ROOTS...)
+	oldMachinePolicyRoot := prefs.MACHINE_POLICY_ROOT
+	oldUserPolicyRoot := prefs.USER_POLICY_ROOT
+	oldUserPreferenceRoot := prefs.USER_PREFERENCE_ROOT
+	oldRoots := append([]string(nil), prefs.ROOTS...)
+	oldRoot := prefs.ROOT
+
+	prefs.MACHINE_POLICY_ROOT = securityPolicyTestRoot + "/airgap_machine_policy"
+	prefs.USER_POLICY_ROOT = securityPolicyTestRoot + "/airgap_user_policy"
+	prefs.USER_PREFERENCE_ROOT = securityPolicyTestRoot + "/airgap_user_preference"
+	prefs.ROOT = prefs.USER_PREFERENCE_ROOT
+	prefs.SECURITY_POLICY_ROOTS = []string{prefs.MACHINE_POLICY_ROOT}
+	prefs.ROOTS = []string{prefs.MACHINE_POLICY_ROOT, prefs.USER_POLICY_ROOT, prefs.USER_PREFERENCE_ROOT}
+
+	t.Cleanup(func() {
+		_ = exec.Command("reg", "delete", `HKCU\Software\NVMTest\security_policy`, "/f").Run()
+		prefs.SECURITY_POLICY_ROOTS = oldSecurityRoots
+		prefs.MACHINE_POLICY_ROOT = oldMachinePolicyRoot
+		prefs.USER_POLICY_ROOT = oldUserPolicyRoot
+		prefs.USER_PREFERENCE_ROOT = oldUserPreferenceRoot
+		prefs.ROOTS = oldRoots
+		prefs.ROOT = oldRoot
+		settings.Load(true)
+	})
+
+	if err := registry.PutBool(true, prefs.USER_POLICY_ROOT+"/AirGapped"); err != nil {
+		t.Fatalf("registry.Put user policy AirGapped: %v", err)
+	}
+
+	settings.Load(true)
+	if settings.Global().AirGapped {
+		t.Fatal("AirGapped = true from HKCU policy, must be ignored")
+	}
+
+	if err := registry.PutBool(true, prefs.MACHINE_POLICY_ROOT+"/AirGapped"); err != nil {
+		t.Fatalf("registry.Put machine policy AirGapped: %v", err)
+	}
+
+	settings.Load(true)
+	if !settings.Global().AirGapped {
+		t.Fatal("AirGapped = false, want true from HKLM policy")
+	}
+}
+
+func TestJwksCoseBytesPolicyThenPrefs(t *testing.T) {
+	oldMachinePolicyRoot := prefs.MACHINE_POLICY_ROOT
+	oldMachinePrefRoot := prefs.MACHINE_PREFERENCE_ROOT
+
+	prefs.MACHINE_POLICY_ROOT = securityPolicyTestRoot + "/jwks_policy"
+	prefs.MACHINE_PREFERENCE_ROOT = securityPolicyTestRoot + "/jwks_prefs"
+
+	t.Cleanup(func() {
+		_ = exec.Command("reg", "delete", `HKCU\Software\NVMTest\security_policy`, "/f").Run()
+		prefs.MACHINE_POLICY_ROOT = oldMachinePolicyRoot
+		prefs.MACHINE_PREFERENCE_ROOT = oldMachinePrefRoot
+	})
+
+	prefBlob := []byte{0x01, 0x02, 0x03}
+	policyBlob := []byte{0xCA, 0xFE}
+
+	if err := registry.Put(prefBlob, prefs.MACHINE_PREFERENCE_ROOT+"/JwksCose"); err != nil {
+		t.Fatalf("Put prefs JwksCose: %v", err)
+	}
+	got := settings.JwksCoseBytes()
+	if string(got) != string(prefBlob) {
+		t.Fatalf("prefs blob = %v, want %v", got, prefBlob)
+	}
+
+	if err := registry.Put(policyBlob, prefs.MACHINE_POLICY_ROOT+"/JwksCose"); err != nil {
+		t.Fatalf("Put policy JwksCose: %v", err)
+	}
+	got = settings.JwksCoseBytes()
+	if string(got) != string(policyBlob) {
+		t.Fatalf("policy blob = %v, want %v", got, policyBlob)
+	}
+}
+
 func TestLoadUsesHKCUPreferenceForSecurityPolicySettings(t *testing.T) {
 	oldSecurityRoots := append([]string(nil), prefs.SECURITY_POLICY_ROOTS...)
 	oldMachinePolicyRoot := prefs.MACHINE_POLICY_ROOT

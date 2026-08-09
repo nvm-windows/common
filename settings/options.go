@@ -23,6 +23,7 @@ type Settings struct {
 	AllowRootDirChange           bool     `cfg:"allow_root_dir_change" reg:"AllowRootDirChange" default:"true" help:"Allow changing the install root directory." hidden:"true"`
 	LocalInstallDir              string   `cfg:"local_dir" reg:"LocalInstallDir" help:"An alternative directory for installing Node.js versions. This overrides the cache." hidden:"true"`
 	LocalInstallOnly             bool     `cfg:"local_install_only" reg:"LocalInstallOnly" default:"false" help:"Only install Node.js versions from the local install directory." hidden:"true"`
+	AirGapped                    bool     `cfg:"air_gapped" reg:"AirGapped" default:"false" help:"Skip live JWKS; verify AccessToken against the COSE-signed offline JWKS store only." hidden:"true"`
 	NewsFeedURL                  string   `cfg:"news_feed_url" reg:"NewsFeedURL" default:"https://updates.nvm-windows.com/news" help:"URL for fetching news entries." hidden:"true"`
 	LastUpdateCheck              string   `cfg:"last_update_check" reg:"LastUpdateCheck" help:"The last time updates were checked." hidden:"true"`
 	LastNewsCheck                string   `cfg:"last_news_check" reg:"LastNewsCheck" help:"The last time news was checked." hidden:"true"`
