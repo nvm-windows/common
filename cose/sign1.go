@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/ldclabs/cose/cose"
 	"github.com/ldclabs/cose/iana"
@@ -33,6 +34,8 @@ func SetChainVerifyRoots(roots *x509.CertPool) {
 
 // VerifySign1 validates a COSE Sign1 envelope (x5chain → Windows roots →
 // ExtKeyUsageCodeSigning → signer O= in allowedOrgs) and returns the payload.
+// Chain validity is checked at signing time (COSE iat, else leaf NotAfter),
+// not wall-clock now — Azure Trusted Signing leaves rotate about every 24h.
 func VerifySign1(data []byte, allowedOrgs []string) ([]byte, error) {
 	msg := &cose.Sign1Message[[]byte]{}
 	if err := msg.UnmarshalCBOR(data); err != nil {
@@ -47,7 +50,7 @@ func VerifySign1(data []byte, allowedOrgs []string) ([]byte, error) {
 		return nil, fmt.Errorf("COSE Sign1 missing x5chain certificate")
 	}
 
-	if err := verifyX509Chain(chain); err != nil {
+	if err := verifyX509Chain(chain, msg.Protected, msg.Unprotected); err != nil {
 		return nil, err
 	}
 
@@ -131,7 +134,7 @@ func certificatesFromHeaderValue(value any) ([]*x509.Certificate, error) {
 	}
 }
 
-func verifyX509Chain(chain []*x509.Certificate) error {
+func verifyX509Chain(chain []*x509.Certificate, protected, unprotected cose.Headers) error {
 	if len(chain) == 0 {
 		return fmt.Errorf("empty certificate chain")
 	}
@@ -152,9 +155,11 @@ func verifyX509Chain(chain []*x509.Certificate) error {
 		intermediates.AddCert(chain[i])
 	}
 
+	at := chainVerifyTime(chain[0], protected, unprotected)
 	_, err = chain[0].Verify(x509.VerifyOptions{
 		Roots:         roots,
 		Intermediates: intermediates,
+		CurrentTime:   at,
 		KeyUsages:     []x509.ExtKeyUsage{x509.ExtKeyUsageCodeSigning},
 	})
 	if err != nil {
@@ -162,6 +167,67 @@ func verifyX509Chain(chain []*x509.Certificate) error {
 	}
 
 	return nil
+}
+
+// headerParameterIat is RFC 9052 "iat" (issued-at), Unix seconds.
+const headerParameterIat = 6
+
+// chainVerifyTime is the instant used for x509 path building.
+//
+// Azure Trusted Signing / Artifact Signing issues ~24h leaf certs. Verifying
+// "now" makes every worker fail the day after publish. Authenticode solves this
+// with an RFC3161 timestamp; COSE Sign1 here only has x5chain (+ optional iat).
+// We verify the chain as of signing time: COSE iat when present and inside the
+// leaf window, otherwise the last second the leaf was valid if it has already
+// expired. The signature still has to match the embedded public key.
+func chainVerifyTime(leaf *x509.Certificate, protected, unprotected cose.Headers) time.Time {
+	now := time.Now()
+	if leaf == nil {
+		return now
+	}
+
+	if iat, ok := coseIssuedAt(protected, unprotected); ok {
+		skew := 5 * time.Minute
+		if !iat.Before(leaf.NotBefore.Add(-skew)) && !iat.After(leaf.NotAfter.Add(skew)) {
+			return iat
+		}
+	}
+
+	if now.After(leaf.NotAfter) {
+		return leaf.NotAfter.Add(-time.Second)
+	}
+	if now.Before(leaf.NotBefore) {
+		return leaf.NotBefore
+	}
+	return now
+}
+
+func coseIssuedAt(headers ...cose.Headers) (time.Time, bool) {
+	for _, h := range headers {
+		if h == nil || !h.Has(headerParameterIat) {
+			continue
+		}
+		if n, err := h.GetInt(headerParameterIat); err == nil {
+			if n > 0 {
+				return time.Unix(int64(n), 0).UTC(), true
+			}
+		}
+		switch v := h.Get(headerParameterIat).(type) {
+		case int64:
+			if v > 0 {
+				return time.Unix(v, 0).UTC(), true
+			}
+		case uint64:
+			if v > 0 {
+				return time.Unix(int64(v), 0).UTC(), true
+			}
+		case int:
+			if v > 0 {
+				return time.Unix(int64(v), 0).UTC(), true
+			}
+		}
+	}
+	return time.Time{}, false
 }
 
 func certificateOrganization(cert *x509.Certificate) string {

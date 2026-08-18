@@ -36,6 +36,72 @@ func TestVerifySign1(t *testing.T) {
 	}
 }
 
+func TestVerifySign1AcceptsExpiredAzureStyleLeaf(t *testing.T) {
+	now := time.Now()
+	caKey, caCert := mustCreateCAAt(t, now.Add(-72*time.Hour), now.Add(24*time.Hour))
+	leafKey, leafCert := mustCreateCodeSigningLeafAt(t, caKey, caCert, "Author Software Inc.", now.Add(-48*time.Hour), now.Add(-23*time.Hour))
+
+	if time.Now().Before(leafCert.NotAfter) {
+		t.Fatal("test leaf must already be expired")
+	}
+
+	roots := x509.NewCertPool()
+	roots.AddCert(caCert)
+	SetChainVerifyRoots(roots)
+	t.Cleanup(func() { SetChainVerifyRoots(nil) })
+
+	inner := []byte("encrypted-inner-payload")
+	signed := mustSignSign1(t, inner, leafKey, leafCert, caCert, iana.AlgorithmPS256)
+
+	got, err := VerifySign1(signed, []string{"Author Software Inc."})
+	if err != nil {
+		t.Fatalf("VerifySign1() expired leaf error = %v", err)
+	}
+	if string(got) != string(inner) {
+		t.Fatalf("payload = %q, want %q", got, inner)
+	}
+}
+
+func TestChainVerifyTimeRewindsExpiredLeaf(t *testing.T) {
+	leaf := &x509.Certificate{
+		NotBefore: time.Now().Add(-48 * time.Hour),
+		NotAfter:  time.Now().Add(-24 * time.Hour),
+	}
+	got := chainVerifyTime(leaf, nil, nil)
+	want := leaf.NotAfter.Add(-time.Second)
+	if !got.Equal(want) {
+		t.Fatalf("chainVerifyTime() = %v, want %v", got, want)
+	}
+}
+
+func TestChainVerifyTimeUsesIatInsideLeafWindow(t *testing.T) {
+	now := time.Now()
+	leaf := &x509.Certificate{
+		NotBefore: now.Add(-48 * time.Hour),
+		NotAfter:  now.Add(-23 * time.Hour),
+	}
+	iat := now.Add(-30 * time.Hour).UTC().Truncate(time.Second)
+	protected := cose.Headers{headerParameterIat: iat.Unix()}
+	got := chainVerifyTime(leaf, protected, nil)
+	if !got.Equal(iat) {
+		t.Fatalf("chainVerifyTime() = %v, want iat %v", got, iat)
+	}
+}
+
+func TestChainVerifyTimeIgnoresIatOutsideLeafWindow(t *testing.T) {
+	now := time.Now()
+	leaf := &x509.Certificate{
+		NotBefore: now.Add(-48 * time.Hour),
+		NotAfter:  now.Add(-23 * time.Hour),
+	}
+	protected := cose.Headers{headerParameterIat: now.Unix()}
+	got := chainVerifyTime(leaf, protected, nil)
+	want := leaf.NotAfter.Add(-time.Second)
+	if !got.Equal(want) {
+		t.Fatalf("chainVerifyTime() = %v, want rewind %v", got, want)
+	}
+}
+
 func TestVerifySign1RejectsDisallowedSigner(t *testing.T) {
 	caKey, caCert := mustCreateCA(t)
 	leafKey, leafCert := mustCreateCodeSigningLeaf(t, caKey, caCert, "Author Software Inc.")
@@ -96,6 +162,11 @@ func TestCertificateOrganization(t *testing.T) {
 
 func mustCreateCA(t *testing.T) (*rsa.PrivateKey, *x509.Certificate) {
 	t.Helper()
+	return mustCreateCAAt(t, time.Now().Add(-time.Hour), time.Now().Add(24*time.Hour))
+}
+
+func mustCreateCAAt(t *testing.T, notBefore, notAfter time.Time) (*rsa.PrivateKey, *x509.Certificate) {
+	t.Helper()
 
 	key, err := rsa.GenerateKey(rand.Reader, 2048)
 	if err != nil {
@@ -108,8 +179,8 @@ func mustCreateCA(t *testing.T) (*rsa.PrivateKey, *x509.Certificate) {
 			Organization: []string{"Test CA"},
 			CommonName:   "Test CA",
 		},
-		NotBefore:             time.Now().Add(-time.Hour),
-		NotAfter:              time.Now().Add(24 * time.Hour),
+		NotBefore:             notBefore,
+		NotAfter:              notAfter,
 		IsCA:                  true,
 		KeyUsage:              x509.KeyUsageCertSign | x509.KeyUsageCRLSign,
 		BasicConstraintsValid: true,
@@ -130,6 +201,11 @@ func mustCreateCA(t *testing.T) (*rsa.PrivateKey, *x509.Certificate) {
 
 func mustCreateCodeSigningLeaf(t *testing.T, caKey *rsa.PrivateKey, caCert *x509.Certificate, org string) (*rsa.PrivateKey, *x509.Certificate) {
 	t.Helper()
+	return mustCreateCodeSigningLeafAt(t, caKey, caCert, org, time.Now().Add(-time.Hour), time.Now().Add(24*time.Hour))
+}
+
+func mustCreateCodeSigningLeafAt(t *testing.T, caKey *rsa.PrivateKey, caCert *x509.Certificate, org string, notBefore, notAfter time.Time) (*rsa.PrivateKey, *x509.Certificate) {
+	t.Helper()
 
 	key, err := rsa.GenerateKey(rand.Reader, 2048)
 	if err != nil {
@@ -142,8 +218,8 @@ func mustCreateCodeSigningLeaf(t *testing.T, caKey *rsa.PrivateKey, caCert *x509
 			Organization: []string{org},
 			CommonName:   org,
 		},
-		NotBefore: time.Now().Add(-time.Hour),
-		NotAfter:  time.Now().Add(24 * time.Hour),
+		NotBefore: notBefore,
+		NotAfter:  notAfter,
 		KeyUsage:  x509.KeyUsageDigitalSignature,
 		ExtKeyUsage: []x509.ExtKeyUsage{
 			x509.ExtKeyUsageCodeSigning,

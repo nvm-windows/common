@@ -181,9 +181,17 @@ func LTSName(version string) string {
 }
 
 // alias resolves a named alias to a concrete version string.
-// Supported aliases: "latest", "lts", "lts/<name>".
+// Supported aliases: "latest", "lts", "lts/<name>", "default", "current".
 func alias(version string) (string, error) {
 	v := strings.ToLower(strings.TrimSpace(version))
+
+	if v == "default" || v == "current" {
+		active := strings.TrimSpace(settings.Global().ActiveVersion)
+		if active == "" {
+			return "", fmt.Errorf("no default version is set")
+		}
+		return active, nil
+	}
 
 	if v == "latest" {
 		all, err := List()

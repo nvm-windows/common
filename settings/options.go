@@ -25,6 +25,7 @@ type Settings struct {
 	LocalInstallOnly             bool     `cfg:"local_install_only" reg:"LocalInstallOnly" default:"false" help:"Only install Node.js versions from the local install directory." hidden:"true"`
 	AirGapped                    bool     `cfg:"air_gapped" reg:"AirGapped" default:"false" help:"Skip live JWKS; verify AccessToken against the COSE-signed offline JWKS store only." hidden:"true"`
 	NewsFeedURL                  string   `cfg:"news_feed_url" reg:"NewsFeedURL" default:"https://updates.nvm-windows.com/news" help:"URL for fetching news entries." hidden:"true"`
+	ReleaseFeedURL               string   `cfg:"release_feed_url" reg:"ReleaseFeedURL" default:"https://updates.nvm-windows.com/releases" help:"URL for fetching release entries." hidden:"true"`
 	LastUpdateCheck              string   `cfg:"last_update_check" reg:"LastUpdateCheck" help:"The last time updates were checked." hidden:"true"`
 	LastNewsCheck                string   `cfg:"last_news_check" reg:"LastNewsCheck" help:"The last time news was checked." hidden:"true"`
 	LastSyncCheck                string   `cfg:"last_sync_check" reg:"LastSyncCheck" help:"The last time sync app was updated." hidden:"true"`

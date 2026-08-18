@@ -64,6 +64,17 @@ func ResolveInstalledVersion(requestedVersion string, resolvePartialRemotely boo
 		return false, version, nil
 	}
 
+	if isNamedSpecifier(requestedVersion) {
+		version, _, err := findVersionFn(requestedVersion)
+		if err != nil {
+			return false, "", err
+		}
+		if v, ok := checkInstalledLocallyFn(version); ok {
+			return true, v, nil
+		}
+		return false, version, nil
+	}
+
 	if latest, ok := latestInstalledMatchFn(requestedVersion); ok {
 		return true, latest, nil
 	}

@@ -156,3 +156,30 @@ func isPartialVersionSpec(version string) bool {
 	}
 	return true
 }
+
+func isExactVersionSpec(version string) bool {
+	normalized := NormalizeVersion(version)
+	parts := strings.Split(normalized, ".")
+	if len(parts) != 3 {
+		return false
+	}
+	for _, part := range parts {
+		if part == "" {
+			return false
+		}
+		if _, err := strconv.Atoi(part); err != nil {
+			return false
+		}
+	}
+	return true
+}
+
+// isNamedSpecifier reports CLI tokens that must be resolved through Find
+// (latest, lts, default, current, user aliases) rather than local-only
+// partial matching.
+func isNamedSpecifier(version string) bool {
+	if isPartialVersionSpec(version) || isExactVersionSpec(version) {
+		return false
+	}
+	return strings.TrimSpace(version) != ""
+}

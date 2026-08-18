@@ -89,6 +89,47 @@ func TestResolveInstalledVersion_LocalPartialOnly(t *testing.T) {
 	}
 }
 
+func TestResolveInstalledVersion_NamedSpecifierResolvesWhenLocalOnly(t *testing.T) {
+	originalCheckInstalledLocally := checkInstalledLocallyFn
+	originalLatestInstalledMatch := latestInstalledMatchFn
+	originalFindVersion := findVersionFn
+	originalIsInstalled := isInstalledFn
+	defer func() {
+		checkInstalledLocallyFn = originalCheckInstalledLocally
+		latestInstalledMatchFn = originalLatestInstalledMatch
+		findVersionFn = originalFindVersion
+		isInstalledFn = originalIsInstalled
+	}()
+
+	latestInstalledMatchFn = func(spec string, installed ...[]string) (string, bool) {
+		return "", false
+	}
+	checkInstalledLocallyFn = func(spec string) (string, bool) {
+		return "", false
+	}
+	findVersionFn = func(spec string) (string, string, error) {
+		if spec != "lts" {
+			t.Fatalf("findVersionFn called with %q, want %q", spec, "lts")
+		}
+		return "22.17.0", "10.0.0", nil
+	}
+	isInstalledFn = func(spec string) (bool, string, error) {
+		t.Fatalf("isInstalledFn should not be used for named specifiers")
+		return false, "", nil
+	}
+
+	installed, version, err := ResolveInstalledVersion("lts", false)
+	if err != nil {
+		t.Fatalf("ResolveInstalledVersion returned error: %v", err)
+	}
+	if installed {
+		t.Fatalf("installed = true, want false")
+	}
+	if version != "22.17.0" {
+		t.Fatalf("version = %q, want %q", version, "22.17.0")
+	}
+}
+
 func TestResolveInstalledVersion_MissingLocalPartialDoesNotResolveRemotely(t *testing.T) {
 	originalCheckInstalledLocally := checkInstalledLocallyFn
 	originalLatestInstalledMatch := latestInstalledMatchFn
