@@ -60,6 +60,16 @@ func IsBlockedFromCfgSet(name string) bool {
 	return IsLicensingCfg(name) || name == "active_version"
 }
 
+// IsExcludedFromBulkReset reports settings skipped by nvm config reset all.
+func IsExcludedFromBulkReset(name string) bool {
+	return name == "root" || IsBlockedFromCfgSet(name)
+}
+
+// IsPolicyManagedError reports whether Del/Put failed because policy owns the value.
+func IsPolicyManagedError(err error) bool {
+	return err != nil && strings.Contains(err.Error(), "managed by policy")
+}
+
 // ListUserCfg returns cfg keys exposed to nvm cfg set/get/del help and validation.
 func ListUserCfg() []string {
 	all := List()
