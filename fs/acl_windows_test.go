@@ -36,6 +36,10 @@ func TestIsUnderSafeManagedRoot(t *testing.T) {
 	if isUnderSafeManagedRoot(`C:\nvm`) {
 		t.Fatalf("expected C:\\nvm to be risky")
 	}
+	pd := os.Getenv("ProgramData")
+	if pd != "" && isUnderSafeManagedRoot(filepath.Join(pd, "nvm", "installs")) {
+		t.Fatalf("ProgramData must not be treated as a safe managed root")
+	}
 }
 
 func TestIsRiskyManagedPath_NestedUnderDriveRootChild(t *testing.T) {

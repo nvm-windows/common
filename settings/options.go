@@ -14,8 +14,8 @@ type Settings struct {
 	AutoDetect                   []string `cfg:"auto_detect" reg:"AutoDetect" default:".nvmrc,.node-version,package.json" help:"Project files to inspect for version (shim-only)."` // comma-separated list of files to inspect for version
 	DefaultDetectFile            string   `cfg:"default_detect_file" reg:"DefaultDetectFile" default:".nvmrc" help:"The default file to write to when saving/pinning a version to a project."`
 	AutoUse                      bool     `cfg:"auto_use" reg:"AutoUse" default:"true" help:"Automatically switch to auto-detected version to run the specified scripts without modifying the system version (shim-only)."`
-	AutoInstall                  bool     `cfg:"auto_install" reg:"AutoInstall" default:"false" help:"Automatically install missing auto-detected version (rc/shim-only)."`
-	AutoInstallPrompt            bool     `cfg:"auto_install_prompt" reg:"AutoInstallPrompt" default:"true" help:"Prompt before automatically installing missing auto-detected version (rc/shim-only)."`
+	AutoInstall                  bool     `cfg:"auto_install" reg:"AutoInstall" default:"false" help:"Automatically install missing auto-detected version (node shim, proxy npm/npx/yarn/pnpm, pin)."`
+	AutoInstallPrompt            bool     `cfg:"auto_install_prompt" reg:"AutoInstallPrompt" default:"true" help:"Prompt before automatically installing missing auto-detected version (node shim, proxy, pin)."`
 	DisableUpgrade               bool     `cfg:"disable_upgrade" reg:"DisableUpgrade" default:"false" help:"Disable nvm upgrades." hidden:"true"`
 	AllowInsecureDownloads       bool     `cfg:"allow_insecure_downloads" reg:"AllowInsecureDownloads" default:"false" help:"Allow expired/invalid SSL certificates when downloading assets." hidden:"false"`
 	AllowDownloadCacheRemoval    bool     `cfg:"allow_download_cache_removal" reg:"AllowDownloadCacheDelete" default:"true" help:"Allow removing cached downloads."`

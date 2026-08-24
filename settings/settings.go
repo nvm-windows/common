@@ -775,7 +775,9 @@ func Validate(name string, value interface{}) error {
 		if strings.TrimSpace(strVal) == "" {
 			return fmt.Errorf("root must be a non-empty path")
 		}
-		fs.WarnRiskyRootLayout(filepath.Clean(Expand(strVal)))
+		cleaned := filepath.Clean(Expand(strVal))
+		fs.WarnRiskyRootLayout(cleaned)
+		fs.WarnSharedWritableRoot(cleaned)
 
 	case "proxy":
 		if strings.TrimSpace(strVal) == "" {
@@ -894,6 +896,9 @@ func Put(name string, value interface{}) error {
 		}
 		_ = fs.HardenManagedDirectory(rootPath)
 		_ = fs.HardenManagedDirectory(filepath.Dir(rootPath))
+		if fs.AllowsCrossUserWrite(rootPath) {
+			return fmt.Errorf("root %q remains writable by other users after hardening; choose a private path under %%LOCALAPPDATA%%", rootPath)
+		}
 	}
 
 	return nil

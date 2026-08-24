@@ -6,6 +6,8 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
+	"syscall"
 
 	"golang.org/x/sys/windows"
 )
@@ -66,14 +68,28 @@ func RunWithRuntimeShimWrite(shimDir, proxyPath string, fn func() error) error {
 	}
 
 	if err := UnlockShimDirectory(shimDir); err != nil {
-		return err
+		// Elevated lock can leave Admin-owned protected DACL; medium-IL user then
+		// cannot WRITE_DAC. Re-enable inheritance and retry once.
+		if isAccessDenied(err) {
+			EnableInheritance(shimDir)
+			err = UnlockShimDirectory(shimDir)
+		}
+		if err != nil {
+			return fmt.Errorf("failed to unlock shim directory %s: %w", shimDir, err)
+		}
 	}
 
 	proxyUnlocked := false
 	if proxyPath = filepath.Clean(proxyPath); proxyPath != "" && proxyPath != "." {
 		if err := UnlockProxyExecutable(proxyPath); err != nil {
-			_ = LockShimDirectory(shimDir)
-			return err
+			if isAccessDenied(err) {
+				EnableInheritance(filepath.Dir(proxyPath))
+				err = UnlockProxyExecutable(proxyPath)
+			}
+			if err != nil {
+				_ = LockShimDirectory(shimDir)
+				return fmt.Errorf("failed to unlock proxy executable %s: %w", proxyPath, err)
+			}
 		}
 		proxyUnlocked = true
 	}
@@ -92,6 +108,19 @@ func RunWithRuntimeShimWrite(shimDir, proxyPath string, fn func() error) error {
 
 	fnErr = fn()
 	return fnErr
+}
+
+func isAccessDenied(err error) bool {
+	if err == nil {
+		return false
+	}
+	if errno, ok := err.(windows.Errno); ok && errno == windows.ERROR_ACCESS_DENIED {
+		return true
+	}
+	if errno, ok := err.(syscall.Errno); ok && errno == syscall.ERROR_ACCESS_DENIED {
+		return true
+	}
+	return strings.Contains(strings.ToLower(err.Error()), "access is denied")
 }
 
 func applyShimDirectoryDACL(path string, writeWindow bool) error {
@@ -153,17 +182,42 @@ func setProtectedObjectDACL(path string, dacl *windows.ACL) error {
 	)
 }
 
+func currentUserSID() (*windows.SID, error) {
+	token, err := windows.OpenCurrentProcessToken()
+	if err != nil {
+		return nil, err
+	}
+	defer token.Close()
+
+	tu, err := token.GetTokenUser()
+	if err != nil {
+		return nil, err
+	}
+	return tu.User.Sid, nil
+}
+
 func shimDirectoryExplicitAccess(writeWindow bool) ([]windows.EXPLICIT_ACCESS, func(), error) {
 	entries, release, err := hardenedExplicitAccess()
 	if err != nil {
 		return nil, nil, err
 	}
 
+	userAccess := windows.ACCESS_MASK(dirReadExecute | windows.WRITE_DAC)
 	if writeWindow {
+		userAccess |= shimDirWriteWindow
 		entries[len(entries)-1].AccessPermissions |= shimDirWriteWindow
 	} else {
 		entries[len(entries)-1].AccessPermissions = windows.ACCESS_MASK(dirReadExecute | windows.WRITE_DAC)
 	}
+
+	// Explicit current-user ACE: Creator Owner alone fails when object owner is
+	// Administrators and the process runs medium IL (UAC-filtered admin token).
+	userSID, err := currentUserSID()
+	if err != nil {
+		release()
+		return nil, nil, err
+	}
+	entries = append(entries, explicitAccess(userSID, userAccess, windows.TRUSTEE_IS_USER))
 
 	return entries, release, nil
 }
@@ -191,6 +245,14 @@ func proxyExecutableExplicitAccess(writeWindow bool) ([]windows.EXPLICIT_ACCESS,
 		windows.FreeSid(authUsersSID)
 		return nil, nil, err
 	}
+	userSID, err := currentUserSID()
+	if err != nil {
+		windows.FreeSid(systemSID)
+		windows.FreeSid(adminSID)
+		windows.FreeSid(authUsersSID)
+		windows.FreeSid(creatorOwnerSID)
+		return nil, nil, err
+	}
 
 	release := func() {
 		// SID pointers are referenced by ACL construction; do not free here.
@@ -206,6 +268,7 @@ func proxyExecutableExplicitAccess(writeWindow bool) ([]windows.EXPLICIT_ACCESS,
 		explicitAccess(adminSID, windows.GENERIC_ALL, windows.TRUSTEE_IS_WELL_KNOWN_GROUP),
 		explicitAccess(authUsersSID, proxyFileReadExecute, windows.TRUSTEE_IS_WELL_KNOWN_GROUP),
 		explicitAccess(creatorOwnerSID, ownerAccess, windows.TRUSTEE_IS_USER),
+		explicitAccess(userSID, ownerAccess, windows.TRUSTEE_IS_USER),
 	}
 
 	return entries, release, nil

@@ -118,12 +118,14 @@ func isUnderSafeManagedRoot(path string) bool {
 }
 
 func safeManagedRoots() []string {
+	// ProgramData intentionally omitted: it is often Users-writable (CREATOR OWNER)
+	// and was the v1 shared-plant EoP surface. Soft ProgramData roots are hardened
+	// via daclAllowsCrossPrincipalWrite instead of being skipped as "safe".
 	return []string{
 		os.Getenv("LOCALAPPDATA"),
 		os.Getenv("USERPROFILE"),
 		os.Getenv("ProgramFiles"),
 		os.Getenv("ProgramFiles(x86)"),
-		os.Getenv("ProgramData"),
 	}
 }
 
