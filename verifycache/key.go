@@ -17,8 +17,8 @@ import (
 // EnsureVerifyKey creates {dataRoot}/.verify, provisions an NCrypt signing key
 // when needed, and exports the public key to pubkey.cer plus pubkey.sha256 (DI-01 C).
 //
-// .verify always receives a protected DACL (DI-01 D). When the on-disk pubkey no
-// longer matches the NCrypt-exported blob, HKCU verify-cache entries are wiped.
+// Harden of .verify runs only when creating/repairing key material (DI-01 D), not on
+// every CLI launch — SetNamedSecurityInfo on the hot path was a measurable tax.
 func EnsureVerifyKey(dataRoot string) error {
 	dataRoot = filepath.Clean(strings.TrimSpace(dataRoot))
 	if dataRoot == "" || dataRoot == "." {
@@ -30,9 +30,6 @@ func EnsureVerifyKey(dataRoot string) error {
 		return fmt.Errorf("failed to create verify directory: %w", err)
 	}
 	_ = fs.HideDirectory(verifyDir)
-	if err := fs.HardenVerifyDirectory(verifyDir); err != nil {
-		return fmt.Errorf("failed to harden verify directory: %w", err)
-	}
 
 	containerName, err := loadKeyContainerName(dataRoot)
 	if err != nil {
@@ -41,9 +38,24 @@ func EnsureVerifyKey(dataRoot string) error {
 
 	pubKeyPath := PubKeyPath(dataRoot)
 	if _, err := os.Stat(pubKeyPath); err == nil {
+		diskBlob, readErr := os.ReadFile(pubKeyPath)
+		if readErr != nil {
+			return fmt.Errorf("failed to read public key: %w", readErr)
+		}
+		// Hot path: fingerprint already matches → no NCrypt, no ACL rewrite.
+		if err := assertPubKeyFingerprint(dataRoot, diskBlob); err == nil {
+			return nil
+		}
+		if err := fs.HardenVerifyDirectory(verifyDir); err != nil {
+			return fmt.Errorf("failed to harden verify directory: %w", err)
+		}
 		return rebindOrValidatePubKey(dataRoot, containerName)
 	} else if !os.IsNotExist(err) {
 		return fmt.Errorf("failed to inspect public key: %w", err)
+	}
+
+	if err := fs.HardenVerifyDirectory(verifyDir); err != nil {
+		return fmt.Errorf("failed to harden verify directory: %w", err)
 	}
 
 	key, providerName, err := provisionKey(containerName)
