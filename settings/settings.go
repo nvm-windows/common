@@ -894,8 +894,12 @@ func Put(name string, value interface{}) error {
 		if err := os.MkdirAll(rootPath, 0755); err != nil {
 			return fmt.Errorf("root: could not create \"%s\" directory: %w", rootPath, err)
 		}
-		_ = fs.HardenManagedDirectory(rootPath)
-		_ = fs.HardenManagedDirectory(filepath.Dir(rootPath))
+		if err := fs.HardenManagedDirectory(rootPath); err != nil {
+			return fmt.Errorf("root: ACL hardening failed for %q: %w", rootPath, err)
+		}
+		if err := fs.HardenManagedDirectory(filepath.Dir(rootPath)); err != nil {
+			return fmt.Errorf("root: ACL hardening failed for parent of %q: %w", rootPath, err)
+		}
 		if fs.AllowsCrossUserWrite(rootPath) {
 			return fmt.Errorf("root %q remains writable by other users after hardening; choose a private path under %%LOCALAPPDATA%%", rootPath)
 		}

@@ -76,3 +76,38 @@ func TestHardenManagedDirectory_SkipsSafeProfilePath(t *testing.T) {
 		t.Fatalf("HardenManagedDirectory: %v", err)
 	}
 }
+
+func TestHardenManagedDirectory_RiskyPathRejectsCrossUserWrite(t *testing.T) {
+	// Use a temp path under a synthetic drive-root-child name when possible.
+	// On CI, C:\ may not be writable; skip if create fails.
+	dir := `C:\nvm-acl-harden-test`
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		t.Skipf("cannot create risky test dir: %v", err)
+	}
+	defer os.RemoveAll(dir)
+
+	if !IsRiskyManagedPath(dir) {
+		t.Fatalf("expected %q risky", dir)
+	}
+	if err := HardenManagedDirectory(dir); err != nil {
+		t.Fatalf("HardenManagedDirectory: %v", err)
+	}
+	if AllowsCrossUserWrite(dir) {
+		t.Fatal("expected hardened dir to deny cross-user write")
+	}
+}
+
+func TestAllowsCrossUserWrite_AuthUsersReadExecuteNotWrite(t *testing.T) {
+	dir := `C:\nvm-acl-rx-test`
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		t.Skipf("cannot create test dir: %v", err)
+	}
+	defer os.RemoveAll(dir)
+	if err := HardenManagedDirectory(dir); err != nil {
+		t.Fatalf("harden: %v", err)
+	}
+	if AllowsCrossUserWrite(dir) {
+		t.Fatal("AuthUsers RX must not count as cross-user write")
+	}
+}
+

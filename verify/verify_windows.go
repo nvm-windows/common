@@ -35,12 +35,14 @@ var wintrustActionGenericVerifyV2 = windows.GUID{
 }
 
 const (
-	wtdUIChoiceNone      = 2
-	wtdRevokeNone        = 0
-	wtdChoiceFile        = 1
-	wtdStateActionIgnore = 0
-	wtdProvFlagsSafer    = 0x00000100
-	wtdUIContextExecute  = 0
+	wtdUIChoiceNone             = 2
+	wtdRevokeNone               = 0
+	wtdRevokeWholechain         = 1
+	wtdChoiceFile               = 1
+	wtdStateActionIgnore        = 0
+	wtdCacheOnlyURLRetrieval    = 0x00000004
+	wtdProvFlagsSafer           = 0x00000100
+	wtdUIContextExecute         = 0
 )
 
 type wintrustFileInfo struct {
@@ -66,7 +68,19 @@ type wintrustData struct {
 	pSignatureSettings  uintptr
 }
 
-func verifyAuthenticodeChain(path string) error {
+func wintrustRevocationParams(mode RevocationMode) (fdwRevocationChecks uint32, dwProvFlags uint32) {
+	dwProvFlags = wtdProvFlagsSafer
+	switch mode {
+	case RevocationOnline:
+		return wtdRevokeWholechain, dwProvFlags
+	case RevocationCached:
+		return wtdRevokeWholechain, dwProvFlags | wtdCacheOnlyURLRetrieval
+	default:
+		return wtdRevokeNone, dwProvFlags
+	}
+}
+
+func verifyAuthenticodeChain(path string, mode RevocationMode) error {
 	if _, err := os.Stat(path); err != nil {
 		return fmt.Errorf("unable to verify authenticode signature for %s: %w", filepath.Base(path), err)
 	}
@@ -81,14 +95,15 @@ func verifyAuthenticodeChain(path string) error {
 		pcwszFilePath: pathW,
 	}
 
+	fdw, flags := wintrustRevocationParams(mode)
 	trustData := wintrustData{
 		cbStruct:            uint32(unsafe.Sizeof(wintrustData{})),
 		dwUIChoice:          wtdUIChoiceNone,
-		fdwRevocationChecks: wtdRevokeNone,
+		fdwRevocationChecks: fdw,
 		dwUnionChoice:       wtdChoiceFile,
 		pFile:               uintptr(unsafe.Pointer(&fileInfo)),
 		dwStateAction:       wtdStateActionIgnore,
-		dwProvFlags:         wtdProvFlagsSafer,
+		dwProvFlags:         flags,
 		dwUIContext:         wtdUIContextExecute,
 	}
 

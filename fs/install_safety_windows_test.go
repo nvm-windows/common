@@ -26,6 +26,16 @@ func TestCheckVersionDirTrustMissingOK(t *testing.T) {
 	}
 }
 
+func TestCheckVersionDirTrustNormalDirectoryOK(t *testing.T) {
+	dir := filepath.Join(t.TempDir(), "v1.2.3")
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		t.Fatalf("MkdirAll: %v", err)
+	}
+	if err := CheckVersionDirTrust(dir); err != nil {
+		t.Fatalf("CheckVersionDirTrust(normal directory) = %v", err)
+	}
+}
+
 func TestCheckVersionDirTrustRejectsReparse(t *testing.T) {
 	root := t.TempDir()
 	target := filepath.Join(root, "real")

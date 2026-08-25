@@ -24,6 +24,17 @@ func TestEnsureVerifyKeyCreatesPubKey(t *testing.T) {
 		t.Fatalf("Stat(%q) size = 0, want exported public key bytes", pubKeyPath)
 	}
 
+	if _, err := os.Stat(PubKeyFingerprintPath(dataRoot)); err != nil {
+		t.Fatalf("fingerprint missing: %v", err)
+	}
+	blob, err := os.ReadFile(pubKeyPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := assertPubKeyFingerprint(dataRoot, blob); err != nil {
+		t.Fatalf("fingerprint: %v", err)
+	}
+
 	containerPath := KeyContainerPath(dataRoot)
 	containerData, err := os.ReadFile(containerPath)
 	if err != nil {
@@ -31,6 +42,19 @@ func TestEnsureVerifyKeyCreatesPubKey(t *testing.T) {
 	}
 	if len(containerData) == 0 {
 		t.Fatal("key-container.txt is empty")
+	}
+}
+
+func TestLoadTrustedPublicKeyRejectsTamperedCer(t *testing.T) {
+	dataRoot := t.TempDir()
+	if err := EnsureVerifyKey(dataRoot); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(PubKeyPath(dataRoot), []byte("tampered-pubkey-blob"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := loadTrustedPublicKey(dataRoot); err == nil {
+		t.Fatal("expected tampered pubkey.cer to fail fingerprint check")
 	}
 }
 

@@ -18,12 +18,19 @@ const (
 
 	dirReadExecute = windows.GENERIC_READ | windows.GENERIC_EXECUTE
 
-	crossUserWriteMask = windows.FILE_GENERIC_WRITE |
-		windows.GENERIC_WRITE |
-		windows.GENERIC_ALL |
+	// Write-capable bits only. Do not include READ_CONTROL/SYNCHRONIZE — those
+	// overlap FILE_GENERIC_READ/EXECUTE and false-positive AuthUsers RX ACEs.
+	// FILE_DELETE_CHILD = 0x40 (not always named in x/sys).
+	crossUserWriteMask = windows.FILE_WRITE_DATA |
+		windows.FILE_APPEND_DATA |
+		windows.FILE_WRITE_EA |
+		windows.FILE_WRITE_ATTRIBUTES |
+		windows.ACCESS_MASK(0x00000040) |
 		windows.DELETE |
 		windows.WRITE_DAC |
-		windows.WRITE_OWNER
+		windows.WRITE_OWNER |
+		windows.GENERIC_WRITE |
+		windows.GENERIC_ALL
 )
 
 var runtimeDataDirNames = []string{".shim", ".link", ".sync", ".cache", ".nodejs", ".verify"}
@@ -73,32 +80,104 @@ func WarnRiskyRootLayout(installRoot string) {
 }
 
 // HardenManagedDirectory applies a protected DACL on risky managed directories.
-// Errors are logged and returned; callers should treat hardening as best-effort.
+// Fail-closed: errors are returned so callers can abort install/bootstrap.
 func HardenManagedDirectory(path string) error {
 	path = filepath.Clean(path)
 	if path == "" || path == "." {
 		return nil
 	}
+	if _, err := os.Lstat(path); err != nil {
+		if os.IsNotExist(err) {
+			return nil
+		}
+		return fmt.Errorf("unable to inspect %s for ACL hardening: %w", path, err)
+	}
 	if !IsRiskyManagedPath(path) {
 		return nil
 	}
 	if err := applyHardenedDACL(path); err != nil {
-		log.Printf("nvm: warning: could not harden directory ACL for %s: %v", path, err)
-		return err
+		log.Printf("nvm: could not harden directory ACL for %s: %v", path, err)
+		return fmt.Errorf("ACL hardening failed for %s: %w", path, err)
+	}
+	if err := verifyHardenedDACL(path); err != nil {
+		return fmt.Errorf("ACL hardening verification failed for %s: %w", path, err)
 	}
 	return nil
 }
 
 // HardenRuntimeLayout hardens the install root, data root, and known runtime dirs.
-func HardenRuntimeLayout(installRoot, dataRoot string) {
-	_ = HardenManagedDirectory(dataRoot)
-	_ = HardenManagedDirectory(installRoot)
+// Returns the first hardening failure (fail-closed for SEC-06).
+func HardenRuntimeLayout(installRoot, dataRoot string) error {
+	var first error
+	harden := func(path string) {
+		if err := HardenManagedDirectory(path); err != nil && first == nil {
+			first = err
+		}
+	}
+	harden(dataRoot)
+	harden(installRoot)
 	for _, name := range runtimeDataDirNames {
-		_ = HardenManagedDirectory(filepath.Join(dataRoot, name))
+		harden(filepath.Join(dataRoot, name))
 	}
 	for _, sub := range []string{"versions", "http"} {
-		_ = HardenManagedDirectory(filepath.Join(dataRoot, ".cache", sub))
+		harden(filepath.Join(dataRoot, ".cache", sub))
 	}
+	return first
+}
+
+// RepairRuntimeACLs re-applies managed DACLs and re-locks .shim / proxy.exe.
+// Intended for elevated `nvm doctor --autofix` when unlock windows fail.
+func RepairRuntimeACLs(installRoot, dataRoot string) error {
+	installRoot = filepath.Clean(strings.TrimSpace(installRoot))
+	dataRoot = filepath.Clean(strings.TrimSpace(dataRoot))
+	if installRoot == "" || dataRoot == "" {
+		return fmt.Errorf("install root and data root are required for ACL repair")
+	}
+	if err := HardenRuntimeLayout(installRoot, dataRoot); err != nil {
+		return err
+	}
+	shimDir := filepath.Join(dataRoot, ".shim")
+	if err := LockShimDirectory(shimDir); err != nil {
+		return fmt.Errorf("failed to lock shim directory: %w", err)
+	}
+	proxyPath := filepath.Join(dataRoot, "proxy.exe")
+	if err := LockProxyExecutable(proxyPath); err != nil {
+		return fmt.Errorf("failed to lock proxy executable: %w", err)
+	}
+	if err := HardenVerifyDirectory(filepath.Join(dataRoot, ".verify")); err != nil {
+		return fmt.Errorf("failed to harden verify directory: %w", err)
+	}
+	return nil
+}
+
+// HardenVerifyDirectory always applies a protected DACL on .verify (DI-01 D),
+// even under LocalAppData where HardenManagedDirectory would otherwise no-op.
+func HardenVerifyDirectory(path string) error {
+	path = filepath.Clean(path)
+	if path == "" || path == "." {
+		return nil
+	}
+	if _, err := os.Lstat(path); err != nil {
+		if os.IsNotExist(err) {
+			return nil
+		}
+		return fmt.Errorf("unable to inspect %s for verify ACL hardening: %w", path, err)
+	}
+	if err := applyHardenedDACL(path); err != nil {
+		log.Printf("nvm: could not harden verify directory ACL for %s: %v", path, err)
+		return fmt.Errorf("verify ACL hardening failed for %s: %w", path, err)
+	}
+	if err := verifyHardenedDACL(path); err != nil {
+		return fmt.Errorf("verify ACL hardening verification failed for %s: %w", path, err)
+	}
+	return nil
+}
+
+func verifyHardenedDACL(path string) error {
+	if daclAllowsCrossPrincipalWrite(path) {
+		return fmt.Errorf("directory remains writable by Authenticated Users or Users")
+	}
+	return nil
 }
 
 func isUnderSafeManagedRoot(path string) bool {
@@ -173,13 +252,11 @@ func daclAllowsCrossPrincipalWrite(path string) bool {
 	if err != nil {
 		return false
 	}
-	defer windows.FreeSid(authUsers)
 
 	users, err := windows.CreateWellKnownSid(windows.WinBuiltinUsersSid)
 	if err != nil {
 		return false
 	}
-	defer windows.FreeSid(users)
 
 	for i := uint16(0); i < dacl.AceCount; i++ {
 		var ace *windows.ACCESS_ALLOWED_ACE

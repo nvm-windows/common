@@ -10,7 +10,10 @@ require (
 	golang.org/x/sys v0.41.0
 )
 
-require common/fs v1.0.0 // indirect
+require (
+	common/fs v1.0.0
+	common/urlguard v1.0.0 // indirect
+)
 
 replace common/preferences v1.0.0 => ../preferences
 
@@ -21,3 +24,5 @@ replace common/settings v1.0.0 => ../settings
 replace common/verify v1.0.0 => ../verify
 
 replace common/fs v1.0.0 => ../fs
+
+replace common/urlguard v1.0.0 => ../urlguard

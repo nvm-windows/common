@@ -9,15 +9,16 @@ import (
 	"strings"
 )
 
-// VerifyAuthenticode validates the embedded Authenticode chain for path.
+// VerifyAuthenticode validates the embedded Authenticode chain for path using
+// seed revocation policy (online by default; AirGapped→cached).
 func VerifyAuthenticode(path string) error {
-	return verifyAuthenticodeChain(path)
+	return verifyAuthenticodeChain(path, EffectiveSeedRevocationMode())
 }
 
 // VerifySamePublisherAs requires targetPath to pass Authenticode verification and
 // match the signer organization (O=) of referencePath.
 func VerifySamePublisherAs(referencePath, targetPath string) error {
-	if err := verifyAuthenticodeChain(targetPath); err != nil {
+	if err := verifyAuthenticodeChain(targetPath, EffectiveSeedRevocationMode()); err != nil {
 		return err
 	}
 

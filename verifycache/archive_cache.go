@@ -223,7 +223,7 @@ func verifyStoredArchiveSignature(dataRoot string, entry map[string]interface{})
 		return err
 	}
 
-	pubKey, err := os.ReadFile(PubKeyPath(dataRoot))
+	pubKey, err := loadTrustedPublicKey(dataRoot)
 	if err != nil {
 		return err
 	}

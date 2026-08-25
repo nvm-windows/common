@@ -5,6 +5,7 @@ package verifycache
 import (
 	"fmt"
 	"os"
+	"path/filepath"
 	"strings"
 	"syscall"
 	"unsafe"
@@ -85,6 +86,12 @@ func exportPublicKey(key verifyKey, pubKeyPath string) error {
 	if err := os.Rename(tempPath, pubKeyPath); err != nil {
 		_ = os.Remove(tempPath)
 		return fmt.Errorf("failed to install public key: %w", err)
+	}
+
+	// DI-01 C: fingerprint written only on NCrypt export path.
+	dataRoot := filepath.Dir(filepath.Dir(pubKeyPath))
+	if err := writePubKeyFingerprint(dataRoot, blob); err != nil {
+		return err
 	}
 
 	return nil

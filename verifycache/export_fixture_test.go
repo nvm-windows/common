@@ -24,13 +24,15 @@ func TestExportVerifyCacheFixtures(t *testing.T) {
 	}
 
 	const (
-		nodePath    = `C:\nvm\installs\v22\node.exe`
-		size        = int64(12345)
-		mtime       = uint64(9876543210)
-		thumbprint  = "ABCD1234"
+		nodePath   = `C:\nvm\installs\v22\node.exe`
+		size       = int64(12345)
+		mtime      = uint64(9876543210)
+		thumbprint = "ABCD1234"
+		digest     = "aabbccdd"
 	)
+	state := fileSecurityState{VolumeSerial: 42, FileID: 123, USN: 456}
 
-	payload, err := canonicalPayload(nodePath, size, mtime, thumbprint)
+	payload, err := canonicalPayload(nodePath, size, mtime, thumbprint, digest, state)
 	if err != nil {
 		t.Fatalf("canonicalPayload() error = %v", err)
 	}

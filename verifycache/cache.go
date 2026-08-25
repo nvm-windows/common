@@ -52,7 +52,16 @@ func SignNodeCacheWithSigners(nodeExePath string, allowedSigners []string) error
 		return fmt.Errorf("unable to resolve signer thumbprint for %s", filepath.Base(nodeExePath))
 	}
 
-	payload, err := canonicalPayload(nodeExePath, size, mtime, thumbprint)
+	digest, err := fileSHA256(nodeExePath)
+	if err != nil {
+		return fmt.Errorf("unable to hash %s: %w", filepath.Base(nodeExePath), err)
+	}
+	securityState, err := nodeFileSecurityState(nodeExePath)
+	if err != nil {
+		return fmt.Errorf("unable to read security state for %s: %w", filepath.Base(nodeExePath), err)
+	}
+
+	payload, err := canonicalPayload(nodeExePath, size, mtime, thumbprint, digest, securityState)
 	if err != nil {
 		return err
 	}
@@ -94,6 +103,18 @@ func SignNodeCacheWithSigners(nodeExePath string, allowedSigners []string) error
 		return err
 	}
 	if err := registry.Put(thumbprint, base+"/Thumbprint"); err != nil {
+		return err
+	}
+	if err := registry.Put(digest, base+"/Digest"); err != nil {
+		return err
+	}
+	if err := registry.Put(securityState.VolumeSerial, base+"/VolumeSerial"); err != nil {
+		return err
+	}
+	if err := registry.Put(securityState.FileID, base+"/FileID"); err != nil {
+		return err
+	}
+	if err := registry.Put(securityState.USN, base+"/USN"); err != nil {
 		return err
 	}
 	if err := registry.Put(signature, base+"/Sig"); err != nil {
@@ -141,6 +162,12 @@ func clearAllCache() error {
 			}
 			continue
 		}
+		if strings.EqualFold(key, scriptCacheBucket) {
+			if err := clearScriptCacheAll(); err != nil {
+				return err
+			}
+			continue
+		}
 		if err := deleteRegistrySubKey(root + "/" + key); err != nil {
 			return err
 		}
@@ -167,6 +194,10 @@ func prewarmVerifyCache(allInstalled bool, allowedSigners []string) error {
 	var firstErr error
 	for _, target := range targets {
 		if err := signNodeCache(target, allowedSigners); err != nil && firstErr == nil {
+			firstErr = err
+		}
+		versionDir := filepath.Dir(target)
+		if err := SignVersionScripts(versionDir); err != nil && firstErr == nil {
 			firstErr = err
 		}
 	}
@@ -222,8 +253,20 @@ func verifyStoredSignature(dataRoot, cacheKey string, entry map[string]interface
 	sizeValue := entryUint64(entry["Size"])
 	mtimeValue := entryUint64(entry["Mtime"])
 	thumbprintValue, _ := entry["Thumbprint"].(string)
+	digestValue, _ := entry["Digest"].(string)
+	if strings.TrimSpace(digestValue) == "" {
+		return fmt.Errorf("cache digest missing")
+	}
+	if entry["VolumeSerial"] == nil || entry["FileID"] == nil || entry["USN"] == nil {
+		return fmt.Errorf("cache file security state missing")
+	}
+	securityState := fileSecurityState{
+		VolumeSerial: uint32(entryUint64(entry["VolumeSerial"])),
+		FileID:       entryUint64(entry["FileID"]),
+		USN:          entryUint64(entry["USN"]),
+	}
 
-	payload, err := canonicalPayload(pathValue, int64(sizeValue), mtimeValue, thumbprintValue)
+	payload, err := canonicalPayload(pathValue, int64(sizeValue), mtimeValue, thumbprintValue, digestValue, securityState)
 	if err != nil {
 		return err
 	}

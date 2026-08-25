@@ -57,6 +57,8 @@ func UnlockProxyExecutable(path string) error {
 }
 
 // RunWithRuntimeShimWrite unlocks .shim (and proxy.exe when present), runs fn, then re-locks.
+// Does not re-enable ACL inheritance on access denial (SEC-06); callers must repair via
+// elevated RepairRuntimeACLs / `nvm doctor --autofix`.
 func RunWithRuntimeShimWrite(shimDir, proxyPath string, fn func() error) error {
 	shimDir = filepath.Clean(shimDir)
 	if shimDir == "" || shimDir == "." {
@@ -68,28 +70,22 @@ func RunWithRuntimeShimWrite(shimDir, proxyPath string, fn func() error) error {
 	}
 
 	if err := UnlockShimDirectory(shimDir); err != nil {
-		// Elevated lock can leave Admin-owned protected DACL; medium-IL user then
-		// cannot WRITE_DAC. Re-enable inheritance and retry once.
-		if isAccessDenied(err) {
-			EnableInheritance(shimDir)
-			err = UnlockShimDirectory(shimDir)
-		}
-		if err != nil {
-			return fmt.Errorf("failed to unlock shim directory %s: %w", shimDir, err)
-		}
+		return fmt.Errorf(
+			"failed to unlock shim directory %s: %w (protected DACL; run elevated `nvm doctor --autofix` to repair runtime ACLs)",
+			shimDir,
+			err,
+		)
 	}
 
 	proxyUnlocked := false
 	if proxyPath = filepath.Clean(proxyPath); proxyPath != "" && proxyPath != "." {
 		if err := UnlockProxyExecutable(proxyPath); err != nil {
-			if isAccessDenied(err) {
-				EnableInheritance(filepath.Dir(proxyPath))
-				err = UnlockProxyExecutable(proxyPath)
-			}
-			if err != nil {
-				_ = LockShimDirectory(shimDir)
-				return fmt.Errorf("failed to unlock proxy executable %s: %w", proxyPath, err)
-			}
+			_ = LockShimDirectory(shimDir)
+			return fmt.Errorf(
+				"failed to unlock proxy executable %s: %w (protected DACL; run elevated `nvm doctor --autofix` to repair runtime ACLs)",
+				proxyPath,
+				err,
+			)
 		}
 		proxyUnlocked = true
 	}
@@ -229,28 +225,18 @@ func proxyExecutableExplicitAccess(writeWindow bool) ([]windows.EXPLICIT_ACCESS,
 	}
 	adminSID, err := windows.CreateWellKnownSid(windows.WinBuiltinAdministratorsSid)
 	if err != nil {
-		windows.FreeSid(systemSID)
 		return nil, nil, err
 	}
 	authUsersSID, err := windows.CreateWellKnownSid(windows.WinAuthenticatedUserSid)
 	if err != nil {
-		windows.FreeSid(systemSID)
-		windows.FreeSid(adminSID)
 		return nil, nil, err
 	}
 	creatorOwnerSID, err := windows.CreateWellKnownSid(windows.WinCreatorOwnerSid)
 	if err != nil {
-		windows.FreeSid(systemSID)
-		windows.FreeSid(adminSID)
-		windows.FreeSid(authUsersSID)
 		return nil, nil, err
 	}
 	userSID, err := currentUserSID()
 	if err != nil {
-		windows.FreeSid(systemSID)
-		windows.FreeSid(adminSID)
-		windows.FreeSid(authUsersSID)
-		windows.FreeSid(creatorOwnerSID)
 		return nil, nil, err
 	}
 

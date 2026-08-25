@@ -3,6 +3,7 @@
 package verifycache
 
 import (
+	"encoding/binary"
 	"fmt"
 	"strings"
 	"syscall"
@@ -11,6 +12,12 @@ import (
 	"golang.org/x/sys/windows"
 	winreg "golang.org/x/sys/windows/registry"
 )
+
+type fileSecurityState struct {
+	VolumeSerial uint32
+	FileID       uint64
+	USN          uint64
+}
 
 func nodeFileTimes(path string) (size int64, mtime uint64, err error) {
 	pathW, err := windows.UTF16PtrFromString(path)
@@ -26,6 +33,57 @@ func nodeFileTimes(path string) (size int64, mtime uint64, err error) {
 	size = int64(info.FileSizeHigh)<<32 | int64(info.FileSizeLow)
 	mtime = uint64(info.LastWriteTime.HighDateTime)<<32 | uint64(info.LastWriteTime.LowDateTime)
 	return size, mtime, nil
+}
+
+func nodeFileSecurityState(path string) (fileSecurityState, error) {
+	pathW, err := windows.UTF16PtrFromString(path)
+	if err != nil {
+		return fileSecurityState{}, err
+	}
+	handle, err := windows.CreateFile(
+		pathW,
+		windows.FILE_READ_ATTRIBUTES,
+		windows.FILE_SHARE_READ|windows.FILE_SHARE_WRITE|windows.FILE_SHARE_DELETE,
+		nil,
+		windows.OPEN_EXISTING,
+		windows.FILE_ATTRIBUTE_NORMAL,
+		0,
+	)
+	if err != nil {
+		return fileSecurityState{}, err
+	}
+	defer windows.CloseHandle(handle)
+
+	var info windows.ByHandleFileInformation
+	if err := windows.GetFileInformationByHandle(handle, &info); err != nil {
+		return fileSecurityState{}, err
+	}
+
+	var output [512]uint64
+	outputBytes := unsafe.Slice((*byte)(unsafe.Pointer(&output[0])), int(unsafe.Sizeof(output)))
+	var returned uint32
+	input := [2]uint16{2, 2}
+	if err := windows.DeviceIoControl(
+		handle,
+		windows.FSCTL_READ_FILE_USN_DATA,
+		(*byte)(unsafe.Pointer(&input[0])),
+		uint32(unsafe.Sizeof(input)),
+		&outputBytes[0],
+		uint32(len(outputBytes)),
+		&returned,
+		nil,
+	); err != nil {
+		return fileSecurityState{}, err
+	}
+	if returned < 32 || binary.LittleEndian.Uint16(outputBytes[4:6]) != 2 {
+		return fileSecurityState{}, fmt.Errorf("unsupported USN record")
+	}
+
+	return fileSecurityState{
+		VolumeSerial: info.VolumeSerialNumber,
+		FileID:       binary.LittleEndian.Uint64(outputBytes[8:16]),
+		USN:          binary.LittleEndian.Uint64(outputBytes[24:32]),
+	}, nil
 }
 
 func deleteRegistrySubKey(registryPath string) error {
@@ -160,11 +218,11 @@ func verifyECDSA(publicKeyBlob []byte, digest [32]byte, signature []byte) error 
 }
 
 var (
-	bcrypt                         = windows.NewLazySystemDLL("bcrypt.dll")
-	procBCryptOpenAlgorithmProvider = bcrypt.NewProc("BCryptOpenAlgorithmProvider")
+	bcrypt                           = windows.NewLazySystemDLL("bcrypt.dll")
+	procBCryptOpenAlgorithmProvider  = bcrypt.NewProc("BCryptOpenAlgorithmProvider")
 	procBCryptCloseAlgorithmProvider = bcrypt.NewProc("BCryptCloseAlgorithmProvider")
-	procBCryptImportKeyPair        = bcrypt.NewProc("BCryptImportKeyPair")
-	procBCryptDestroyKey           = bcrypt.NewProc("BCryptDestroyKey")
-	procBCryptVerifySignature      = bcrypt.NewProc("BCryptVerifySignature")
-	msPrimitiveProviderW           = windows.StringToUTF16Ptr(msPrimitiveProvider)
+	procBCryptImportKeyPair          = bcrypt.NewProc("BCryptImportKeyPair")
+	procBCryptDestroyKey             = bcrypt.NewProc("BCryptDestroyKey")
+	procBCryptVerifySignature        = bcrypt.NewProc("BCryptVerifySignature")
+	msPrimitiveProviderW             = windows.StringToUTF16Ptr(msPrimitiveProvider)
 )
