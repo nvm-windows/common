@@ -10,6 +10,7 @@ import (
 	"path/filepath"
 	"strings"
 	"sync"
+	"time"
 )
 
 var GlobalHeaders = map[string]string{}
@@ -19,6 +20,12 @@ type DownloadConfig struct {
 	Destination   string
 	AllowInsecure bool
 	Headers       map[string]string
+	// Timeout bounds the entire download (dial + headers + body). Zero uses the
+	// default client timeout (30s). Catalog fetches should set a short value.
+	Timeout time.Duration
+	// Context cancels the download. When both Context and Timeout are set,
+	// the effective deadline is the earlier of the two.
+	Context context.Context
 }
 
 type DownloadResponse struct {
@@ -79,7 +86,17 @@ func Download(url string, config ...DownloadConfig) (*DownloadJob, error) {
 		cfg = DownloadConfig{Cache: false}
 	}
 
-	ctx, cancel := context.WithCancel(context.Background())
+	parent := cfg.Context
+	if parent == nil {
+		parent = context.Background()
+	}
+	var cancel context.CancelFunc
+	var ctx context.Context
+	if cfg.Timeout > 0 {
+		ctx, cancel = context.WithTimeout(parent, cfg.Timeout)
+	} else {
+		ctx, cancel = context.WithCancel(parent)
+	}
 	progressChan := make(chan DownloadProgress, 10)
 	resultChan := make(chan DownloadResult, 1)
 
@@ -93,6 +110,7 @@ func Download(url string, config ...DownloadConfig) (*DownloadJob, error) {
 	job.wg.Add(1)
 	go func() {
 		defer job.wg.Done()
+		defer cancel()
 		defer close(progressChan)
 		defer close(resultChan)
 		response, err := downloadInternal(ctx, normalizedURL, cfg, progressChan)
@@ -120,7 +138,19 @@ func downloadInternal(ctx context.Context, url string, cfg DownloadConfig, progr
 		req.Header.Set(k, v)
 	}
 
-	client := new(cfg.AllowInsecure)
+	var cachedEtag string
+	if cfg.Cache {
+		if _, etag, _, ok := FindCachedForURL(url); ok && etag != "" {
+			cachedEtag = etag
+			req.Header.Set("If-None-Match", `"`+etag+`"`)
+		}
+	}
+
+	clientTimeout := 30 * time.Second
+	if cfg.Timeout > 0 {
+		clientTimeout = cfg.Timeout
+	}
+	client := NewClient(clientTimeout, cfg.AllowInsecure)
 	res, err := client.client.Do(req)
 	if err != nil {
 		// HTTP/2 stream errors can occur in elevated/admin Windows contexts due to
@@ -137,7 +167,7 @@ func downloadInternal(ctx context.Context, url string, cfg DownloadConfig, progr
 				}
 				req2.Header.Set(k, v[0])
 			}
-			res, err = h1only(cfg.AllowInsecure).client.Do(req2)
+			res, err = h1onlyWithTimeout(clientTimeout, cfg.AllowInsecure).client.Do(req2)
 		}
 		if err != nil {
 			return nil, err
@@ -146,6 +176,29 @@ func downloadInternal(ctx context.Context, url string, cfg DownloadConfig, progr
 
 	result := &DownloadResponse{}
 	result.Response = res
+
+	// Conditional request hit: reuse on-disk body without re-downloading.
+	if cfg.Cache && res.StatusCode == gohttp.StatusNotModified {
+		_ = res.Body.Close()
+		content, etag, _, ok := FindCachedForURL(url)
+		if !ok || len(content) == 0 {
+			return nil, errors.New("received 304 Not Modified but no local cache entry")
+		}
+		if etag == "" {
+			etag = cachedEtag
+		}
+		result.Success = true
+		result.FromCache = true
+		result.Content = content
+		result.ETag = etag
+		if cfg.Destination != "" {
+			if err := save(url, cfg.Destination, content); err != nil {
+				return nil, err
+			}
+		}
+		return result, nil
+	}
+
 	result.Success = res.StatusCode >= 200 && res.StatusCode < 300
 
 	if !cfg.Cache {

@@ -92,6 +92,10 @@ func signDelegatedScript(dataRoot, scriptPath string) error {
 		return fmt.Errorf("script path is empty")
 	}
 
+	if err := verifyDelegatedScript(dataRoot, scriptPath); err == nil {
+		return nil
+	}
+
 	size, mtime, err := nodeFileTimes(scriptPath)
 	if err != nil {
 		return fmt.Errorf("unable to stat script: %w", err)

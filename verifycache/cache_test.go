@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	prefs "common/preferences"
 	"common/settings"
@@ -140,6 +141,38 @@ func TestClearNodeCacheRemovesEntry(t *testing.T) {
 	}
 	if len(entry) != 0 {
 		t.Fatalf("readCacheEntry() after clear = %#v, want empty", entry)
+	}
+}
+
+func TestSignNodeCacheSkipsWhenCacheValid(t *testing.T) {
+	dataRoot := setupVerifyCacheTestProfile(t)
+	nodePath := signedNodeExecutable(t)
+
+	installDir := filepath.Join(dataRoot, "installs", "v22.0.0")
+	if err := os.MkdirAll(installDir, 0o755); err != nil {
+		t.Fatalf("MkdirAll(installDir) error = %v", err)
+	}
+	linkPath := filepath.Join(installDir, "node.exe")
+
+	sourceData, err := os.ReadFile(nodePath)
+	if err != nil {
+		t.Fatalf("ReadFile(source node) error = %v", err)
+	}
+	if err := os.WriteFile(linkPath, sourceData, 0o755); err != nil {
+		t.Fatalf("WriteFile(link node) error = %v", err)
+	}
+
+	allowed := []string{"OpenJS Foundation", "Node.js Foundation", "Author Software Inc."}
+	if err := SignNodeCacheWithSigners(linkPath, allowed); err != nil {
+		t.Fatalf("SignNodeCacheWithSigners(first) error = %v", err)
+	}
+
+	start := time.Now()
+	if err := SignNodeCacheWithSigners(linkPath, allowed); err != nil {
+		t.Fatalf("SignNodeCacheWithSigners(second) error = %v", err)
+	}
+	if elapsed := time.Since(start); elapsed > 250*time.Millisecond {
+		t.Fatalf("second SignNodeCacheWithSigners() took %v, want cache fast path under 250ms", elapsed)
 	}
 }
 

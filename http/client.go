@@ -97,6 +97,13 @@ func (c *Client) Request(req *gohttp.Request) (*gohttp.Response, error) {
 // h1only returns a client that forces HTTP/1.1, used as a fallback when
 // HTTP/2 stream errors occur (common in elevated/admin Windows contexts).
 func h1only(allowInsecure ...bool) *Client {
+	return h1onlyWithTimeout(30*time.Second, allowInsecure...)
+}
+
+func h1onlyWithTimeout(timeout time.Duration, allowInsecure ...bool) *Client {
+	if timeout <= 0 {
+		timeout = 30 * time.Second
+	}
 	transport := gohttp.DefaultTransport.(*gohttp.Transport).Clone()
 	transport.Proxy = proxyURLForRequest
 	transport.ForceAttemptHTTP2 = false
@@ -107,7 +114,7 @@ func h1only(allowInsecure ...bool) *Client {
 
 	return &Client{
 		client: &gohttp.Client{
-			Timeout:   30 * time.Second,
+			Timeout:   timeout,
 			Transport: proxy.WrapTransport(transport),
 		},
 	}

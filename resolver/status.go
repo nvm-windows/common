@@ -4,6 +4,7 @@ import (
 	"common/settings"
 	"os"
 	"path/filepath"
+	"strings"
 )
 
 var (
@@ -11,9 +12,19 @@ var (
 	latestInstalledMatchFn  = LatestInstalledMatch
 	findVersionFn           = Find
 	isInstalledFn           = IsInstalled
+	resolveLocalOnlyAliasFn = resolveLocalOnlyAlias
 )
 
 func IsInstalled(version string) (bool, string, error) {
+	// Expand local aliases before any network work.
+	for depth := 0; depth < 8; depth++ {
+		concrete, ok := resolveLocalOnlyAliasFn(version)
+		if !ok || strings.EqualFold(strings.TrimSpace(concrete), strings.TrimSpace(version)) {
+			break
+		}
+		version = concrete
+	}
+
 	// Fast path: exact x.y.z version present on disk — no network needed.
 	if v, ok := CheckInstalledLocally(version); ok {
 		return true, v, nil
@@ -24,7 +35,7 @@ func IsInstalled(version string) (bool, string, error) {
 		return true, v, nil
 	}
 
-	// Slow path: resolve via network (handles aliases like lts, latest, user aliases).
+	// Slow path: resolve via network (handles aliases like lts, latest).
 	v, _, err := Find(version)
 	if err != nil {
 		return false, v, err
@@ -53,6 +64,20 @@ func IsInstalled(version string) (bool, string, error) {
 // installed locally. When false, partial version specs are matched only
 // against installed versions and never fall through to remote resolution.
 func ResolveInstalledVersion(requestedVersion string, resolvePartialRemotely bool) (bool, string, error) {
+	return resolveInstalledVersion(requestedVersion, resolvePartialRemotely, 0)
+}
+
+func resolveInstalledVersion(requestedVersion string, resolvePartialRemotely bool, depth int) (bool, string, error) {
+	// Expand user/default/current aliases locally so `nvm use <alias>` does not
+	// wait on a remote index.tab fetch when the target is already known.
+	if depth < 8 {
+		if concrete, ok := resolveLocalOnlyAliasFn(requestedVersion); ok {
+			if !strings.EqualFold(strings.TrimSpace(concrete), strings.TrimSpace(requestedVersion)) {
+				return resolveInstalledVersion(concrete, resolvePartialRemotely, depth+1)
+			}
+		}
+	}
+
 	if resolvePartialRemotely && isPartialVersionSpec(requestedVersion) {
 		version, _, err := findVersionFn(requestedVersion)
 		if err != nil {
@@ -86,4 +111,35 @@ func ResolveInstalledVersion(requestedVersion string, resolvePartialRemotely boo
 	}
 
 	return isInstalledFn(requestedVersion)
+}
+
+// resolveLocalOnlyAlias maps default/current and user-defined aliases without
+// touching the network. latest/lts still require the catalog via Find.
+func resolveLocalOnlyAlias(version string) (string, bool) {
+	v := strings.ToLower(strings.TrimSpace(version))
+	if v == "" {
+		return "", false
+	}
+	if v == "default" || v == "current" {
+		active := strings.TrimSpace(settings.Global().ActiveVersion)
+		if active == "" {
+			return "", false
+		}
+		return active, true
+	}
+	if v == "latest" || v == "lts" || strings.HasPrefix(v, "lts/") {
+		return "", false
+	}
+
+	cfg := settings.Global()
+	for _, pair := range cfg.Aliases {
+		parts := strings.SplitN(pair, "=", 2)
+		if len(parts) == 2 && strings.EqualFold(strings.TrimSpace(parts[0]), strings.TrimSpace(version)) {
+			target := strings.TrimSpace(parts[1])
+			if target != "" {
+				return target, true
+			}
+		}
+	}
+	return "", false
 }

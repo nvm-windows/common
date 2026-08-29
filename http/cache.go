@@ -8,6 +8,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 )
 
 var httpCacheRoot = "http"
@@ -74,6 +75,63 @@ func getCacheFilePath(rawURL, etag string) (string, error) {
 
 	name := sanitizeFileName(normalizedURL + "__" + etag)
 	return filepath.Join(cacheDir, name), nil
+}
+
+// FindCachedForURL returns the newest on-disk cache entry for a URL (any ETag).
+// Used for cache-first reads and If-None-Match / 304 handling without a network round-trip.
+func FindCachedForURL(rawURL string) (content []byte, etag string, modTime time.Time, ok bool) {
+	cacheDir, err := GetCacheDir()
+	if err != nil {
+		return nil, "", time.Time{}, false
+	}
+	return findCachedForURLIn(cacheDir, rawURL)
+}
+
+func findCachedForURLIn(cacheDir, rawURL string) (content []byte, etag string, modTime time.Time, ok bool) {
+	normalizedURL, err := normalizeURL(rawURL)
+	if err != nil {
+		return nil, "", time.Time{}, false
+	}
+
+	prefix := sanitizeFileName(normalizedURL + "__")
+	entries, err := os.ReadDir(cacheDir)
+	if err != nil {
+		return nil, "", time.Time{}, false
+	}
+
+	var bestPath string
+	var bestMod time.Time
+	var bestEtag string
+	for _, entry := range entries {
+		if entry.IsDir() {
+			continue
+		}
+		name := entry.Name()
+		if !strings.HasPrefix(name, prefix) {
+			continue
+		}
+		info, err := entry.Info()
+		if err != nil {
+			continue
+		}
+		if bestPath != "" && !info.ModTime().After(bestMod) {
+			continue
+		}
+		bestPath = filepath.Join(cacheDir, name)
+		bestMod = info.ModTime()
+		bestEtag = strings.TrimPrefix(name, prefix)
+	}
+
+	if bestPath == "" {
+		return nil, "", time.Time{}, false
+	}
+
+	data, err := os.ReadFile(bestPath)
+	if err != nil || len(data) == 0 {
+		return nil, "", time.Time{}, false
+	}
+
+	return data, bestEtag, bestMod, true
 }
 
 // pruneURLCacheEntries removes stale cache files for a URL and keeps only keepPath.

@@ -1,7 +1,6 @@
 package resolver
 
 import (
-	"common/http"
 	"common/settings"
 	"encoding/json"
 	"fmt"
@@ -12,91 +11,6 @@ import (
 
 	semver "github.com/Masterminds/semver/v3"
 )
-
-func List(majors ...string) ([][]string, error) {
-	var filter map[string]bool
-	if len(majors) > 0 {
-		// Filter by major versions if specified.
-		filter = make(map[string]bool, len(majors))
-		for _, m := range majors {
-			v := strings.Split(strings.TrimPrefix(m, "v"), ".")[0]
-			_, err := strconv.Atoi(v)
-			if err != nil {
-				return nil, fmt.Errorf("invalid major version: %s", m)
-			}
-			filter[v] = true
-		}
-	}
-
-	mirrors := settings.Global().NodeMirror
-	var content []byte
-
-	success := false
-	for _, mirror := range mirrors {
-		// fmt.Printf("Fetching versions from %s...\n", mirror)
-		job, err := http.Download(fmt.Sprintf("%s/index.tab", mirror), http.DownloadConfig{Cache: true})
-		if err != nil {
-			continue
-		}
-
-		res, err := job.Wait()
-		if err != nil || res == nil || !res.Success {
-			continue
-		}
-
-		if res.Success {
-			success = true
-			content = res.Content
-
-			break
-		}
-	}
-
-	if !success {
-		return nil, fmt.Errorf("failed to fetch version manifests from any server: %s", strings.Join(mirrors, ", "))
-	}
-
-	// Parse content
-	versions := [][]string{}
-	rows := strings.Split(string(content), "\n")
-	headerSkipped := false
-	for _, row := range rows {
-		row = strings.TrimSpace(row)
-		if row == "" {
-			continue
-		}
-
-		// Skip first non-empty row (header).
-		if !headerSkipped {
-			headerSkipped = true
-			continue
-		}
-
-		cols := strings.Split(row, "\t")
-		if len(cols) < 11 {
-			continue
-		}
-
-		version := strings.TrimPrefix(strings.TrimSpace(cols[0]), "v")
-
-		// Optionally filter on major version.
-		major := strings.Split(version, ".")[0]
-		if filter != nil {
-			if _, ok := filter[major]; !ok {
-				continue
-			}
-		}
-
-		releaseDate := strings.TrimSpace(cols[1])
-		npmVersion := strings.TrimPrefix(strings.TrimSpace(cols[3]), "v")
-		lts := strings.TrimPrefix(strings.TrimSpace(cols[9]), "-")
-		security := strings.TrimPrefix(strings.TrimSpace(cols[10]), "-")
-
-		versions = append(versions, []string{version, releaseDate, npmVersion, lts, security})
-	}
-
-	return versions, nil
-}
 
 // FindVersion returns the best matching version for a given version string, along with its npm version.
 // The input version string can be a full version (e.g. "v16.13.0"), a major.minor (e.g. "16.13"), or just a major version (e.g. "16").
@@ -112,18 +26,27 @@ func Find(version string) (string, string, error) {
 		isUserAlias = true
 	}
 
+	resolvedViaAlias := false
 	if isUserAlias || lower == "latest" || lower == "lts" || strings.HasPrefix(lower, "lts/") {
 		resolved, err := alias(lower)
 		if err != nil {
 			return "", "", err
 		}
 		v = resolved
+		resolvedViaAlias = true
 	}
 
 	// Strip prerelease/build metadata for matching purposes.
 	// Prereleases will not be supported until the new Node.js schedule is
 	// implemented with Alpha releases.
 	v = strings.Split(v, "-")[0]
+
+	// After alias resolution the target may already be exact (user alias,
+	// default/current, or latest/lts). Skip a second index.tab fetch.
+	if resolvedViaAlias && isExactVersionSpec(v) {
+		return NormalizeVersion(v), "", nil
+	}
+
 	parts := strings.Split(v, ".")
 
 	major := parts[0]

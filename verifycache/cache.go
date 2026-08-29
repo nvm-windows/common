@@ -38,6 +38,11 @@ func SignNodeCacheWithSigners(nodeExePath string, allowedSigners []string) error
 		return err
 	}
 
+	// Hot path: unchanged node.exe with a valid TPM cache entry skips WinVerifyTrust.
+	if err := verifyNodeCache(dataRoot, nodeExePath, allowedSigners); err == nil {
+		return nil
+	}
+
 	if _, err := verify.VerifyNodeExecutable(nodeExePath, allowedSigners); err != nil {
 		return err
 	}
@@ -241,6 +246,98 @@ func cacheEntryRoot(cacheKey string) string {
 
 func readCacheEntry(cacheKey string) (map[string]interface{}, error) {
 	return registry.GetAll(cacheEntryRoot(cacheKey))
+}
+
+func verifyNodeCache(dataRoot, nodeExePath string, allowedSigners []string) error {
+	nodeExePath = strings.TrimSpace(nodeExePath)
+	if nodeExePath == "" {
+		return fmt.Errorf("node executable path is empty")
+	}
+
+	size, mtime, err := nodeFileTimes(nodeExePath)
+	if err != nil {
+		return err
+	}
+
+	digest, err := fileSHA256(nodeExePath)
+	if err != nil {
+		return fmt.Errorf("unable to hash %s: %w", filepath.Base(nodeExePath), err)
+	}
+
+	securityState, err := nodeFileSecurityState(nodeExePath)
+	if err != nil {
+		return fmt.Errorf("unable to read security state for %s: %w", filepath.Base(nodeExePath), err)
+	}
+
+	cacheKey, err := cacheKeyForPath(nodeExePath)
+	if err != nil {
+		return err
+	}
+
+	entry, err := readCacheEntry(cacheKey)
+	if err != nil {
+		return err
+	}
+	if len(entry) == 0 {
+		return fmt.Errorf("node cache entry missing")
+	}
+
+	version := uint32(entryUint64(entry["Version"]))
+	if version != cacheSchemaVersion {
+		return fmt.Errorf("unsupported node cache schema version %d", version)
+	}
+
+	pathValue, _ := entry["Path"].(string)
+	normalizedPath, err := normalizeNodePath(nodeExePath)
+	if err != nil {
+		return err
+	}
+	if !strings.EqualFold(strings.TrimSpace(pathValue), normalizedPath) {
+		return fmt.Errorf("node cache path mismatch")
+	}
+
+	if int64(entryUint64(entry["Size"])) != size {
+		return fmt.Errorf("node cache size mismatch")
+	}
+	if entryUint64(entry["Mtime"]) != mtime {
+		return fmt.Errorf("node cache modification time mismatch")
+	}
+	if entry["VolumeSerial"] == nil || entry["FileID"] == nil || entry["USN"] == nil {
+		return fmt.Errorf("node cache file security state missing")
+	}
+	if uint32(entryUint64(entry["VolumeSerial"])) != securityState.VolumeSerial ||
+		entryUint64(entry["FileID"]) != securityState.FileID ||
+		entryUint64(entry["USN"]) != securityState.USN {
+		return fmt.Errorf("node cache file identity mismatch")
+	}
+
+	storedDigest, _ := entry["Digest"].(string)
+	if !strings.EqualFold(strings.TrimSpace(storedDigest), digest) {
+		return fmt.Errorf("node cache digest mismatch")
+	}
+
+	storedThumbprint, _ := entry["Thumbprint"].(string)
+	liveThumbprint := verify.SignerThumbprint(nodeExePath)
+	if strings.TrimSpace(storedThumbprint) == "" || liveThumbprint == "" {
+		return fmt.Errorf("node cache thumbprint missing")
+	}
+	if !strings.EqualFold(strings.TrimSpace(storedThumbprint), liveThumbprint) {
+		return fmt.Errorf("node cache thumbprint mismatch")
+	}
+
+	signer := verify.SignerOrganization(nodeExePath)
+	if !verify.IsAllowedSigner(signer, verify.EffectiveAllowedSigners(allowedSigners)) {
+		return fmt.Errorf("node cache signer %q is not allowed", signer)
+	}
+	if !verify.IsAllowedThumbprint(liveThumbprint, settings.Global().AllowedThumbprints) {
+		return fmt.Errorf("node cache thumbprint is not pinned")
+	}
+
+	if err := verifyStoredSignature(dataRoot, cacheKey, entry); err != nil {
+		return fmt.Errorf("node cache signature invalid: %w", err)
+	}
+
+	return nil
 }
 
 func verifyStoredSignature(dataRoot, cacheKey string, entry map[string]interface{}) error {
