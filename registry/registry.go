@@ -110,6 +110,12 @@ func GetBool(key ...string) (bool, bool, error) {
 }
 
 func Put(value interface{}, key ...string) error {
+	if len(key) == 0 {
+		return fmt.Errorf("registry: at least one key path is required")
+	}
+
+	var lastErr error
+	succeeded := false
 	for _, candidate := range key {
 		root, keyPath, valueName, err := parseRegistryValuePath(candidate)
 		if err != nil {
@@ -119,6 +125,7 @@ func Put(value interface{}, key ...string) error {
 		handle, _, err := winreg.CreateKey(root, keyPath, winreg.SET_VALUE)
 		if err != nil {
 			if isPermissionError(err) {
+				lastErr = err
 				continue
 			}
 
@@ -129,11 +136,20 @@ func Put(value interface{}, key ...string) error {
 		handle.Close()
 		if setErr != nil {
 			if isPermissionError(setErr) {
+				lastErr = setErr
 				continue
 			}
 
 			return setErr
 		}
+		succeeded = true
+	}
+
+	if !succeeded {
+		if lastErr != nil {
+			return fmt.Errorf("registry: write denied for all key paths: %w", lastErr)
+		}
+		return fmt.Errorf("registry: write failed for all key paths")
 	}
 
 	return nil
