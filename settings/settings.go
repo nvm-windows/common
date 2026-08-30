@@ -905,6 +905,7 @@ func Put(name string, value interface{}) error {
 		}
 	}
 
+	Load(true)
 	return nil
 }
 

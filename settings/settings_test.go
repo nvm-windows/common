@@ -349,6 +349,18 @@ func TestActiveVersion_InvalidSemver(t *testing.T) {
 	}
 }
 
+func TestPut_RefreshesGlobalActiveVersion(t *testing.T) {
+	settings.Load(true)
+	mustPut(t, "active_version", "20.0.0")
+	if got := settings.Global().ActiveVersion; got != "20.0.0" {
+		t.Fatalf("Global().ActiveVersion = %q, want 20.0.0 after Put", got)
+	}
+	mustPut(t, "active_version", "22.1.0")
+	if got := settings.Global().ActiveVersion; got != "22.1.0" {
+		t.Fatalf("Global().ActiveVersion = %q, want 22.1.0 after Put", got)
+	}
+}
+
 // ── auto_use ──────────────────────────────────────────────────────────────────
 
 func TestAutoUse_ValidValues(t *testing.T) {
