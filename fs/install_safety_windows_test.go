@@ -52,6 +52,16 @@ func TestCheckVersionDirTrustRejectsReparse(t *testing.T) {
 	}
 }
 
+func TestFinalizeVersionDirectoryACLSafeRootOK(t *testing.T) {
+	dir := filepath.Join(t.TempDir(), "v1.2.3")
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		t.Fatalf("MkdirAll: %v", err)
+	}
+	if err := FinalizeVersionDirectoryACL(dir); err != nil {
+		t.Fatalf("FinalizeVersionDirectoryACL(safe root) = %v", err)
+	}
+}
+
 func TestAssertNoReparseBetweenOK(t *testing.T) {
 	root := t.TempDir()
 	nested := filepath.Join(root, "a", "b")

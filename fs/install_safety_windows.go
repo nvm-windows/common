@@ -109,6 +109,34 @@ func AssertNoReparseBetween(root, target string) error {
 	}
 }
 
+// FinalizeVersionDirectoryACL applies post-install ACL policy for a version directory.
+// Version trees are not runtime shim surfaces: they should inherit admin-curated parent
+// ACLs (#1266) instead of receiving protected runtime DACLs (SEC-06).
+func FinalizeVersionDirectoryACL(installDir string) error {
+	installDir = filepath.Clean(installDir)
+	if installDir == "" || installDir == "." {
+		return nil
+	}
+	if err := CheckVersionDirTrust(installDir); err != nil {
+		return err
+	}
+	if isUnderSafeManagedRoot(installDir) {
+		return nil
+	}
+
+	parent := filepath.Dir(installDir)
+	if AllowsCrossUserWrite(parent) {
+		return fmt.Errorf(
+			"refusing version directory %s: install root parent %q is writable by other users",
+			installDir,
+			parent,
+		)
+	}
+
+	EnableInheritance(installDir)
+	return CheckVersionDirTrust(installDir)
+}
+
 func equalFoldPath(a, b string) bool {
 	return strings.EqualFold(filepath.Clean(a), filepath.Clean(b))
 }
