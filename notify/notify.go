@@ -101,6 +101,10 @@ var (
 
 // ----------------------------------------------------------------- API ---
 
+// DisplayName is the toast header in Notification Center.
+// Set via ldflags from manifest.appLabel (e.g. "NVM for Windows").
+var DisplayName string
+
 // Action represents a button shown in the toast notification.
 // URL must be a protocol-handler URI (e.g. "nvm://command?p=x").
 type Action struct {
@@ -112,6 +116,19 @@ type Action struct {
 // notification platform. This must be called (or happen via Send) before
 // notifications will be displayed for unpackaged Win32 apps.
 func Register(appID, displayName string) error {
+	name := strings.TrimSpace(displayName)
+	if name == "" || name == appID {
+		name = strings.TrimSpace(DisplayName)
+	}
+	if name == "" || name == appID {
+		if existing := readRegisteredDisplayName(appID); existing != "" && existing != appID {
+			name = existing
+		}
+	}
+	if name == "" {
+		name = appID
+	}
+
 	key, _, err := registry.CreateKey(
 		registry.CURRENT_USER,
 		`SOFTWARE\Classes\AppUserModelId\`+appID,
@@ -121,7 +138,24 @@ func Register(appID, displayName string) error {
 		return fmt.Errorf("notify register: %w", err)
 	}
 	defer key.Close()
-	return key.SetStringValue("DisplayName", displayName)
+	return key.SetStringValue("DisplayName", name)
+}
+
+func readRegisteredDisplayName(appID string) string {
+	key, err := registry.OpenKey(
+		registry.CURRENT_USER,
+		`SOFTWARE\Classes\AppUserModelId\`+appID,
+		registry.QUERY_VALUE,
+	)
+	if err != nil {
+		return ""
+	}
+	defer key.Close()
+	value, _, err := key.GetStringValue("DisplayName")
+	if err != nil {
+		return ""
+	}
+	return strings.TrimSpace(value)
 }
 
 // Send displays a Windows toast notification.
@@ -142,7 +176,9 @@ func SendWithAudio(appID, title, message, soundURI string, actions ...Action) er
 func sendWithSound(appID, title, message, soundURI string, actions ...Action) error {
 	// Ensure the AUMID is registered; Windows silently drops notifications for
 	// unregistered app IDs even when CreateToastNotifierWithId returns S_OK.
-	Register(appID, appID)
+	// Never register DisplayName=appID — that shows AuthorSoftware.NVMWindows
+	// as the toast header instead of the pretty app label.
+	_ = Register(appID, DisplayName)
 
 	// RO_INIT_MULTITHREADED = 1
 	// 0x00000001 = S_FALSE — already initialised in same apartment, safe to ignore.
