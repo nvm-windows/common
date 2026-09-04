@@ -110,21 +110,37 @@ func AssertNoReparseBetween(root, target string) error {
 }
 
 // FinalizeVersionDirectoryACL applies post-install ACL policy for a version directory.
-// Version trees are not runtime shim surfaces: they should inherit admin-curated parent
-// ACLs (#1266) instead of receiving protected runtime DACLs (SEC-06).
+// Version trees prefer inheriting a hardened install-root DACL (#1266). When inheritance
+// still leaves cross-user write (common on custom roots under C:\…), fall back to a
+// protected managed DACL so proxy NVM4305 checks pass.
 func FinalizeVersionDirectoryACL(installDir string) error {
 	installDir = filepath.Clean(installDir)
 	if installDir == "" || installDir == "." {
 		return nil
 	}
-	if err := CheckVersionDirTrust(installDir); err != nil {
+	if _, err := os.Lstat(installDir); err != nil {
+		if os.IsNotExist(err) {
+			return nil
+		}
 		return err
 	}
+
+	reparse, err := IsReparsePoint(installDir)
+	if err != nil {
+		return err
+	}
+	if reparse {
+		return fmt.Errorf("refusing version directory %s: path is a reparse point (symlink/junction)", installDir)
+	}
+
 	if isUnderSafeManagedRoot(installDir) {
-		return nil
+		return CheckVersionDirTrust(installDir)
 	}
 
 	parent := filepath.Dir(installDir)
+	if err := HardenManagedDirectory(parent); err != nil {
+		return err
+	}
 	if AllowsCrossUserWrite(parent) {
 		return fmt.Errorf(
 			"refusing version directory %s: install root parent %q is writable by other users",
@@ -134,7 +150,112 @@ func FinalizeVersionDirectoryACL(installDir string) error {
 	}
 
 	EnableInheritance(installDir)
+	if err := CheckVersionDirTrust(installDir); err == nil {
+		return nil
+	}
+
+	if err := HardenManagedDirectory(installDir); err != nil {
+		return err
+	}
 	return CheckVersionDirTrust(installDir)
+}
+
+// ListInstalledVersionDirs returns version directories under installRoot that contain node.exe.
+func ListInstalledVersionDirs(installRoot string) ([]string, error) {
+	installRoot = filepath.Clean(strings.TrimSpace(installRoot))
+	if installRoot == "" || installRoot == "." {
+		return nil, nil
+	}
+
+	entries, err := os.ReadDir(installRoot)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return nil, nil
+		}
+		return nil, err
+	}
+
+	out := make([]string, 0)
+	for _, entry := range entries {
+		if !entry.IsDir() {
+			continue
+		}
+		name := entry.Name()
+		if len(name) == 0 || (name[0] != 'v' && name[0] != 'V') {
+			continue
+		}
+		dir := filepath.Join(installRoot, name)
+		if _, err := os.Stat(filepath.Join(dir, "node.exe")); err != nil {
+			continue
+		}
+		out = append(out, dir)
+	}
+	return out, nil
+}
+
+// VersionDirectoryTrustIssue describes a version dir that fails proxy trust checks.
+type VersionDirectoryTrustIssue struct {
+	Path   string
+	Reason string
+}
+
+// CollectVersionDirectoryTrustIssues lists installed version dirs that fail CheckVersionDirTrust.
+func CollectVersionDirectoryTrustIssues(installRoot string) ([]VersionDirectoryTrustIssue, error) {
+	dirs, err := ListInstalledVersionDirs(installRoot)
+	if err != nil {
+		return nil, err
+	}
+	issues := make([]VersionDirectoryTrustIssue, 0)
+	for _, dir := range dirs {
+		if err := CheckVersionDirTrust(dir); err != nil {
+			issues = append(issues, VersionDirectoryTrustIssue{
+				Path:   dir,
+				Reason: err.Error(),
+			})
+		}
+	}
+	return issues, nil
+}
+
+// RepairVersionDirectoryTrust hardens the install root, then repairs each installed
+// version directory so proxy NVM4305 checks pass.
+func RepairVersionDirectoryTrust(installRoot string) (repaired int, remaining []VersionDirectoryTrustIssue, err error) {
+	installRoot = filepath.Clean(strings.TrimSpace(installRoot))
+	if installRoot == "" || installRoot == "." {
+		return 0, nil, nil
+	}
+
+	if err := HardenManagedDirectory(installRoot); err != nil {
+		return 0, nil, err
+	}
+
+	dirs, err := ListInstalledVersionDirs(installRoot)
+	if err != nil {
+		return 0, nil, err
+	}
+
+	for _, dir := range dirs {
+		before := CheckVersionDirTrust(dir)
+		if before == nil {
+			continue
+		}
+		if ferr := FinalizeVersionDirectoryACL(dir); ferr != nil {
+			remaining = append(remaining, VersionDirectoryTrustIssue{
+				Path:   dir,
+				Reason: ferr.Error(),
+			})
+			continue
+		}
+		if CheckVersionDirTrust(dir) == nil {
+			repaired++
+		} else {
+			remaining = append(remaining, VersionDirectoryTrustIssue{
+				Path:   dir,
+				Reason: before.Error(),
+			})
+		}
+	}
+	return repaired, remaining, nil
 }
 
 func equalFoldPath(a, b string) bool {

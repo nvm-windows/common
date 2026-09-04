@@ -125,8 +125,8 @@ func HardenRuntimeLayout(installRoot, dataRoot string) error {
 	return first
 }
 
-// RepairRuntimeACLs re-applies managed DACLs and re-locks .shim / proxy.exe.
-// Intended for elevated `nvm doctor --autofix` when unlock windows fail.
+// RepairRuntimeACLs re-applies managed DACLs, repairs version-dir trust, and re-locks
+// .shim / proxy.exe. Intended for elevated `nvm doctor --autofix` / installer repair.
 func RepairRuntimeACLs(installRoot, dataRoot string) error {
 	installRoot = filepath.Clean(strings.TrimSpace(installRoot))
 	dataRoot = filepath.Clean(strings.TrimSpace(dataRoot))
@@ -136,6 +136,9 @@ func RepairRuntimeACLs(installRoot, dataRoot string) error {
 	if err := HardenRuntimeLayout(installRoot, dataRoot); err != nil {
 		return err
 	}
+
+	_, remaining, versionErr := RepairVersionDirectoryTrust(installRoot)
+
 	shimDir := filepath.Join(dataRoot, ".shim")
 	if err := LockShimDirectory(shimDir); err != nil {
 		return fmt.Errorf("failed to lock shim directory: %w", err)
@@ -146,6 +149,17 @@ func RepairRuntimeACLs(installRoot, dataRoot string) error {
 	}
 	if err := HardenVerifyDirectory(filepath.Join(dataRoot, ".verify")); err != nil {
 		return fmt.Errorf("failed to harden verify directory: %w", err)
+	}
+
+	if versionErr != nil {
+		return versionErr
+	}
+	if len(remaining) > 0 {
+		return fmt.Errorf(
+			"%d version director(y/ies) remain writable by other users (e.g. %s); choose a private install root under %%LOCALAPPDATA%% or fix DACLs manually",
+			len(remaining),
+			remaining[0].Path,
+		)
 	}
 	return nil
 }
