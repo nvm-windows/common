@@ -281,7 +281,7 @@ func mustMintAccessJWT(t *testing.T, kid string, priv *ecdsa.PrivateKey) string 
 			ExpiresAt: jwt.NewNumericDate(now.Add(time.Hour)),
 		},
 		Plan:  "governance",
-		Lic:   "governance",
+		Lic:   LicenseEntitlements{EntitlementGovernance},
 		JKU:   defaultJWKSURL,
 		Roles: []string{"admin"},
 	}

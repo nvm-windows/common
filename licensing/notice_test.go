@@ -1,6 +1,7 @@
 package license
 
 import (
+	"common/token"
 	"strings"
 	"testing"
 	"time"
@@ -87,21 +88,40 @@ func TestExpiryNoticeGraceDaily(t *testing.T) {
 }
 
 func TestExpiryNoticeForTokenSkipsCommunity(t *testing.T) {
-	raw := mustMintAccessToken(t, "community", false)
-	if _, ok := ExpiryNoticeForToken(raw, time.Now()); ok {
-		t.Fatal("community token must not produce expiry notice")
+	tmp, err := token.NewTemporaryToken(time.Minute)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for name, raw := range map[string]string{
+		"empty lic":   mustMintAccessTokenEntitlements(t, false),
+		"temporary":   tmp,
+		"legacy community string": mustMintAccessToken(t, "community", false),
+	} {
+		t.Run(name, func(t *testing.T) {
+			if _, ok := ExpiryNoticeForToken(raw, time.Now()); ok {
+				t.Fatal("non-commercial token must not produce expiry notice")
+			}
+		})
 	}
 }
 
 func TestExpiryNoticeForTokenCertifiedPlans(t *testing.T) {
 	now := time.Date(2026, 8, 8, 12, 0, 0, 0, time.UTC)
 	exp := time.Date(2026, 8, 15, 18, 0, 0, 0, time.UTC)
-	for _, plan := range []string{"governance", "compliance"} {
-		raw := mustMintAccessTokenExpiringAt(t, plan, exp)
-		n, ok := ExpiryNoticeForToken(raw, now)
-		if !ok || !strings.HasSuffix(n.DedupeKey, "|pre7") {
-			t.Fatalf("%s notice = %+v ok=%v", plan, n, ok)
-		}
+	for _, ents := range [][]string{
+		{"governance"},
+		{"compliance"},
+		{"audit", "build"},
+		{"build", "audit", "governance"},
+	} {
+		name := strings.Join(ents, "+")
+		t.Run(name, func(t *testing.T) {
+			raw := mustMintAccessTokenEntitlementsExpiringAt(t, exp, false, ents...)
+			n, ok := ExpiryNoticeForToken(raw, now)
+			if !ok || !strings.HasSuffix(n.DedupeKey, "|pre7") {
+				t.Fatalf("notice = %+v ok=%v", n, ok)
+			}
+		})
 	}
 }
 

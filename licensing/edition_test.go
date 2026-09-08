@@ -1,22 +1,26 @@
 package license
 
 import (
+	"common/token"
 	"testing"
 	"time"
 )
 
 func TestEditionReportsLicensedEdition(t *testing.T) {
 	for _, tt := range []struct {
-		licenseType string
-		want        string
+		name string
+		ents []string
+		want string
 	}{
-		{licenseType: "governance", want: "Governance"},
-		{licenseType: "compliance", want: "Audit"},
-		{licenseType: "audit", want: "Audit"},
-		{licenseType: "COMMUNITY", want: "Community"},
+		{name: "governance", ents: []string{"governance"}, want: "Governance"},
+		{name: "compliance", ents: []string{"compliance"}, want: "Audit"},
+		{name: "audit", ents: []string{"audit"}, want: "Audit"},
+		{name: "build", ents: []string{"build"}, want: "Distro"},
+		{name: "build+audit", ents: []string{"audit", "build"}, want: "Audit"},
+		{name: "build+audit+governance", ents: []string{"build", "audit", "governance"}, want: "Governance"},
 	} {
-		t.Run(tt.licenseType, func(t *testing.T) {
-			withEditionToken(t, mustMintAccessToken(t, tt.licenseType, false))
+		t.Run(tt.name, func(t *testing.T) {
+			withEditionToken(t, mustMintAccessTokenEntitlements(t, false, tt.ents...))
 			if got := Edition(); got != tt.want {
 				t.Fatalf("Edition() = %q, want %q", got, tt.want)
 			}
@@ -25,11 +29,16 @@ func TestEditionReportsLicensedEdition(t *testing.T) {
 }
 
 func TestEditionFallsBackToCommunity(t *testing.T) {
+	tmp, err := token.NewTemporaryToken(time.Minute)
+	if err != nil {
+		t.Fatal(err)
+	}
 	for name, raw := range map[string]string{
-		"missing token":   "",
-		"invalid token":   "not-a-jwt",
-		"temporary token": mustMintAccessToken(t, "governance", true),
-		"expired token":   mustMintAccessTokenExpiringAt(t, "governance", time.Now().Add(-FeatureGracePeriod-time.Hour)),
+		"missing token":     "",
+		"invalid token":     "not-a-jwt",
+		"temporary token":   tmp,
+		"empty entitlements": mustMintAccessTokenEntitlements(t, false),
+		"expired token":     mustMintAccessTokenExpiringAt(t, "governance", time.Now().Add(-FeatureGracePeriod-time.Hour)),
 	} {
 		t.Run(name, func(t *testing.T) {
 			withEditionToken(t, raw)

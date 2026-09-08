@@ -22,29 +22,18 @@ var Access *AccessToken
 
 type TokenClaims struct {
 	jwt.RegisteredClaims
-	Plan  string   `json:"plan"`
-	Lic   string   `json:"lic"`
-	Org   string   `json:"org"`
-	JKU   string   `json:"jku,omitempty"`
-	Roles []string `json:"roles"`
-	Tmp   bool     `json:"tmp"`
+	Plan  string              `json:"plan"`
+	Lic   LicenseEntitlements `json:"lic"`
+	Org   string              `json:"org"`
+	JKU   string              `json:"jku,omitempty"`
+	Roles []string            `json:"roles"`
+	Tmp   bool                `json:"tmp"`
 }
 
 const (
 	defaultJWKSURL   = "https://licensing.author.io/.well-known/jwks"
 	allowedJKUOrigin = "https://licensing.author.io"
 )
-
-// LicenseType returns the commercial license type from lic, falling back to plan.
-func (c *TokenClaims) LicenseType() string {
-	if c == nil {
-		return ""
-	}
-	if lic := strings.TrimSpace(c.Lic); lic != "" {
-		return lic
-	}
-	return strings.TrimSpace(c.Plan)
-}
 
 type jwk struct {
 	Kid string `json:"kid"`
@@ -68,7 +57,7 @@ var errJWKSUnavailable = errors.New("jwks unavailable")
 var FailOpenOnJWKSUnavailable = true
 
 // AllowTemporaryTokenFallback controls whether licensing may mint an unsigned
-// temporary community token after verification or fetch failures.
+// temporary access token after verification or fetch failures.
 var AllowTemporaryTokenFallback = true
 
 const jwksFetchTimeout = 1000 * time.Millisecond
@@ -162,8 +151,9 @@ func NewTemporaryToken(ttl time.Duration) (string, error) {
 			NotBefore: jwt.NewNumericDate(now),
 			ExpiresAt: jwt.NewNumericDate(now.Add(ttl)),
 		},
-		Plan:  "community",
-		Roles: []string{"community"},
+		// Self-generated tokens carry no entitlements (empty lic array).
+		Lic:   LicenseEntitlements{},
+		Roles: []string{},
 		Tmp:   true,
 	}
 

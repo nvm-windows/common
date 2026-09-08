@@ -9,18 +9,35 @@ import (
 // FeatureGracePeriod is how long Audit/Governance features stay authorized after exp.
 const FeatureGracePeriod = 7 * 24 * time.Hour
 
-// commercialLicenseType returns the lowercase lic/plan claim when the token is a
-// non-temporary commercial access token within exp + grace. Missing, invalid, tmp,
-// not-yet-valid, and post-grace tokens fail. Signature is not re-checked here.
-func commercialLicenseType(raw string) (string, bool) {
+// commercialClaims returns parsed commercial claims when the token is a
+// non-temporary access token with at least one commercial entitlement and is
+// within exp + grace. Signature is not re-checked here.
+func commercialClaims(raw string) (*token.TokenClaims, bool) {
 	claims, ok := parseCommercialClaims(raw)
+	if !ok {
+		return nil, false
+	}
+	if !withinFeatureWindow(claims, time.Now()) {
+		return nil, false
+	}
+	return claims, true
+}
+
+// commercialLicenseType returns the primary entitlement label (governance/audit/build/…).
+func commercialLicenseType(raw string) (string, bool) {
+	claims, ok := commercialClaims(raw)
 	if !ok {
 		return "", false
 	}
-	if !withinFeatureWindow(claims, time.Now()) {
-		return "", false
+	return claims.PrimaryEntitlement(), true
+}
+
+func hasCommercialEntitlement(raw, name string) bool {
+	claims, ok := commercialClaims(raw)
+	if !ok {
+		return false
 	}
-	return strings.ToLower(strings.TrimSpace(claims.LicenseType())), true
+	return claims.HasEntitlement(name)
 }
 
 func parseCommercialClaims(raw string) (*token.TokenClaims, bool) {
@@ -39,11 +56,30 @@ func parseCommercialClaims(raw string) (*token.TokenClaims, bool) {
 		return nil, false
 	}
 
-	licenseType := strings.ToLower(strings.TrimSpace(claims.LicenseType()))
-	if licenseType == "" || licenseType == "community" {
+	if !claimsHaveCommercialEntitlement(claims) {
 		return nil, false
 	}
 	return claims, true
+}
+
+func claimsHaveCommercialEntitlement(claims *token.TokenClaims) bool {
+	if claims == nil {
+		return false
+	}
+	ents := claims.Entitlements()
+	if len(ents) == 0 {
+		return false
+	}
+	commercial := false
+	for _, e := range ents {
+		if e == token.EntitlementCommunity {
+			continue
+		}
+		if token.IsCommercialEntitlement(e) {
+			commercial = true
+		}
+	}
+	return commercial
 }
 
 func withinFeatureWindow(claims *token.TokenClaims, now time.Time) bool {

@@ -76,7 +76,7 @@ func licenseInfoFromToken(access *token.AccessToken) LicenseInfo {
 		return info
 	}
 
-	info.Plan = editionLabel(claims.LicenseType())
+	info.Plan = editionLabel(claims.PrimaryEntitlement())
 	info.Roles = claims.Roles
 	if claims.IssuedAt != nil {
 		info.Issued = formatLicenseTime(claims.IssuedAt.Time)
@@ -102,7 +102,7 @@ func isCommunityLicense(access *token.AccessToken) bool {
 		return true
 	}
 
-	return strings.EqualFold(claims.LicenseType(), "community")
+	return !claimsHaveCommercialEntitlement(claims)
 }
 
 func formatLicenseTime(value time.Time) string {

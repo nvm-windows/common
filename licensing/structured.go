@@ -2,6 +2,7 @@ package license
 
 import (
 	"common/settings"
+	"common/token"
 	"strings"
 )
 
@@ -10,23 +11,18 @@ var accessTokenForStructuredLogging = func() string {
 }
 
 // AllowsStructuredLogging reports whether the configured access token authorizes
-// structured (SIEM) event logging. Only a non-expired compliance (Audit) or
-// governance license qualifies. Other plans, missing/tmp/expired tokens, and
-// not-yet-valid tokens fall back to unstructured logging.
+// structured (SIEM) event logging. Requires a non-expired audit (or legacy
+// compliance) entitlement, or governance (which also unlocks SIEM). Missing/tmp/
+// expired tokens and not-yet-valid tokens fall back to unstructured logging.
 func AllowsStructuredLogging() bool {
 	// No time-insensitive cache: exp can elapse while the same JWT is still configured.
-	return licenseTypeAllowsStructured(accessTokenForStructuredLogging())
+	return licenseAllowsStructured(accessTokenForStructuredLogging())
 }
 
-func licenseTypeAllowsStructured(raw string) bool {
-	licenseType, ok := commercialLicenseType(raw)
-	if !ok {
-		return false
-	}
-	switch licenseType {
-	case "compliance", "governance":
+func licenseAllowsStructured(raw string) bool {
+	if hasCommercialEntitlement(raw, token.EntitlementAudit) {
 		return true
-	default:
-		return false
 	}
+	// Governance tokens historically unlocked SIEM; keep that for array and legacy string lic.
+	return hasCommercialEntitlement(raw, token.EntitlementGovernance)
 }

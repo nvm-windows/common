@@ -1,6 +1,7 @@
 package license
 
 import (
+	"common/token"
 	"testing"
 	"time"
 )
@@ -9,6 +10,14 @@ func TestAllowsAdvancedProxyGovernanceOnly(t *testing.T) {
 	withAdvancedProxyToken(t, mustMintAccessToken(t, "governance", false), func() {
 		if !AllowsAdvancedProxy() {
 			t.Fatal("governance license should allow advanced proxy")
+		}
+	})
+}
+
+func TestAllowsAdvancedProxyRejectsAuditEntitlements(t *testing.T) {
+	withAdvancedProxyToken(t, mustMintAccessTokenEntitlements(t, false, token.EntitlementAudit, token.EntitlementBuild), func() {
+		if AllowsAdvancedProxy() {
+			t.Fatal("audit/build entitlements must not allow IWA/PAC proxy")
 		}
 	})
 }

@@ -34,7 +34,7 @@ func ExpiryNoticeForToken(raw string, now time.Time) (ExpiryNotice, bool) {
 	if !ok {
 		return ExpiryNotice{}, false
 	}
-	plan := strings.ToLower(strings.TrimSpace(claims.LicenseType()))
+	plan := strings.ToLower(strings.TrimSpace(claims.PrimaryEntitlement()))
 	exp, ok := expirationTime(claims)
 	if !ok {
 		return ExpiryNotice{}, false

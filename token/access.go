@@ -26,14 +26,14 @@ func (t *AccessToken) Type() string {
 		return "community"
 	}
 
-	res := claims.LicenseType()
+	res := claims.PrimaryEntitlement()
 	switch strings.ToLower(res) {
-	case "community", "":
-		return "community"
+	case EntitlementCommunity, "":
+		return EntitlementCommunity
 	default:
 		if t.Valid {
 			return res
 		}
-		return "community"
+		return EntitlementCommunity
 	}
 }

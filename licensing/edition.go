@@ -2,6 +2,7 @@ package license
 
 import (
 	"common/settings"
+	"common/token"
 	"strings"
 	"unicode"
 )
@@ -25,14 +26,19 @@ func Edition() string {
 
 func editionLabel(licenseType string) string {
 	switch strings.ToLower(strings.TrimSpace(licenseType)) {
-	case "compliance", "audit":
+	case token.EntitlementCompliance, token.EntitlementAudit:
 		return "Audit"
-	case "governance":
+	case token.EntitlementGovernance:
 		return "Governance"
-	case "community", "":
+	case token.EntitlementBuild:
+		return "Distro"
+	case token.EntitlementCommunity, "":
 		return communityEdition
 	default:
 		runes := []rune(strings.ToLower(strings.TrimSpace(licenseType)))
+		if len(runes) == 0 {
+			return communityEdition
+		}
 		runes[0] = unicode.ToUpper(runes[0])
 		return string(runes)
 	}
