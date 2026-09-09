@@ -4,7 +4,7 @@ go 1.26.2
 
 replace common/fs v1.0.0 => ../fs
 
-replace common/preferences v1.0.0 => ../../enhanced/go/preferences
+replace common/preferences v1.0.0 => ../preferences
 
 replace common/registry v1.0.0 => ../registry
 
