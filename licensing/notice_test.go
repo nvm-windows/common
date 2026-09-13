@@ -126,6 +126,7 @@ func TestExpiryNoticeForTokenCertifiedPlans(t *testing.T) {
 }
 
 func TestWithinFeatureWindowGrace(t *testing.T) {
+	withCommercialTrustOK(t)
 	now := time.Now()
 	raw := mustMintAccessTokenExpiringAt(t, "governance", now.Add(-time.Hour))
 	if _, ok := commercialLicenseType(raw); !ok {

@@ -49,8 +49,27 @@ func TestEditionFallsBackToCommunity(t *testing.T) {
 	}
 }
 
+func TestEditionDropsWhenLicenseVerifyStale(t *testing.T) {
+	raw := mustMintAccessToken(t, "governance", false)
+	withEditionToken(t, raw)
+	if got := Edition(); got != "Governance" {
+		t.Fatalf("Edition() = %q before stale", got)
+	}
+
+	origVerified := verifiedAtFn
+	verifiedAtFn = func() string {
+		return time.Now().Add(-(LicenseVerifyMaxAge + time.Hour)).UTC().Format(time.RFC3339)
+	}
+	t.Cleanup(func() { verifiedAtFn = origVerified })
+
+	if got := Edition(); got != "Community" {
+		t.Fatalf("Edition() = %q, want Community when verify stale", got)
+	}
+}
+
 func withEditionToken(t *testing.T, raw string) {
 	t.Helper()
+	withCommercialTrustOK(t)
 	orig := accessTokenForEdition
 	accessTokenForEdition = func() string { return raw }
 	t.Cleanup(func() { accessTokenForEdition = orig })

@@ -66,6 +66,7 @@ func TestAllowsAdvancedProxyAllowsGraceThenRejects(t *testing.T) {
 
 func withAdvancedProxyToken(t *testing.T, raw string, fn func()) {
 	t.Helper()
+	withCommercialTrustOK(t)
 	orig := accessTokenForAdvancedProxy
 	accessTokenForAdvancedProxy = func() string { return raw }
 	t.Cleanup(func() { accessTokenForAdvancedProxy = orig })

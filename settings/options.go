@@ -30,6 +30,9 @@ type Settings struct {
 	LastNewsCheck                string   `cfg:"last_news_check" reg:"LastNewsCheck" help:"The last time news was checked." hidden:"true"`
 	LastSyncCheck                string   `cfg:"last_sync_check" reg:"LastSyncCheck" help:"The last time sync app was updated." hidden:"true"`
 	LastLicenseNotice            string   `cfg:"last_license_notice" reg:"LastLicenseNotice" help:"Dedupe key for the last license expiry desktop notice." hidden:"true"`
+	LastLicenseVerifiedAt        string   `cfg:"last_license_verified_at" reg:"LastLicenseVerifiedAt" help:"RFC3339 UTC of last successful online AccessToken verification." hidden:"true"`
+	LastLicenseVerifyAttemptAt   string   `cfg:"last_license_verify_attempt_at" reg:"LastLicenseVerifyAttemptAt" help:"RFC3339 UTC of last online AccessToken verification attempt." hidden:"true"`
+	LastLicenseVerifyNotice      string   `cfg:"last_license_verify_notice" reg:"LastLicenseVerifyNotice" help:"Dedupe key for license revalidation warning toasts." hidden:"true"`
 	Aliases                      []string `cfg:"aliases" reg:"Aliases" default:"" help:"Comma-delimited list of version aliases in the format alias=version." hidden:"true"`
 	AllowedSigners               []string `cfg:"allowed_signers" reg:"AllowedSigners" help:"Comma-delimited signer organization names (O=) allowed after Authenticode chain verification. Use to restrict vendors (for example OpenJS Foundation vs NodeSource)." hidden:"true"`
 	AllowedThumbprints           []string `cfg:"allowed_thumbprints" reg:"AllowedThumbprints" help:"Optional comma-delimited SHA-1 Authenticode leaf thumbprints (hex). When set, node.exe must match one pin after org allowlist. Empty disables pinning." hidden:"true"`

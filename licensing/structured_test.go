@@ -140,6 +140,7 @@ func TestUnmarshalLicArrayAndString(t *testing.T) {
 
 func withStructuredToken(t *testing.T, raw string, fn func()) {
 	t.Helper()
+	withCommercialTrustOK(t)
 	orig := accessTokenForStructuredLogging
 	accessTokenForStructuredLogging = func() string { return raw }
 	t.Cleanup(func() { accessTokenForStructuredLogging = orig })

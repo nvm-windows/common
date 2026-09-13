@@ -11,7 +11,8 @@ const FeatureGracePeriod = 7 * 24 * time.Hour
 
 // commercialClaims returns parsed commercial claims when the token is a
 // non-temporary access token with at least one commercial entitlement and is
-// within exp + grace. Signature is not re-checked here.
+// within exp + grace. Signature is not re-checked here. Online hosts also
+// require CommercialTrustOK (last successful verify within 30 days).
 func commercialClaims(raw string) (*token.TokenClaims, bool) {
 	claims, ok := parseCommercialClaims(raw)
 	if !ok {
@@ -20,7 +21,21 @@ func commercialClaims(raw string) (*token.TokenClaims, bool) {
 	if !withinFeatureWindow(claims, time.Now()) {
 		return nil, false
 	}
+	if !CommercialTrustOK(time.Now()) {
+		return nil, false
+	}
 	return claims, true
+}
+
+// IsCommercialAccessToken reports whether raw looks like a non-temporary
+// commercial AccessToken still within exp+grace. Ignores online revalidation trust
+// so sync can still attempt verify when the success stamp is stale.
+func IsCommercialAccessToken(raw string) bool {
+	claims, ok := parseCommercialClaims(raw)
+	if !ok {
+		return false
+	}
+	return withinFeatureWindow(claims, time.Now())
 }
 
 // commercialLicenseType returns the primary entitlement label (governance/audit/build/…).
