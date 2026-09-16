@@ -208,7 +208,9 @@ func applyMachineOnlySettings() {
 
 func isSecurityPolicySetting(name string) bool {
 	switch name {
-	case "allowed_signers", "allow_insecure_downloads", "local_install_only", "air_gapped":
+	case "allowed_signers", "allow_insecure_downloads", "local_install_only", "air_gapped",
+		"approved_modules", "approved_global_modules", "trusted_firewall_signers", "trusted_firewall_thumbprint",
+		"firewall_http_timeout_seconds":
 		return true
 	default:
 		return false
