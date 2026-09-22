@@ -17,6 +17,7 @@ import (
 )
 
 var AppId string
+var ProductVersion string
 var CheckURL string
 var ScheduleURL string
 var semverPattern = regexp.MustCompile(`^v?\d+\.\d+\.\d+(-[0-9A-Za-z.-]+)?(\+[0-9A-Za-z.-]+)?$`)
@@ -358,6 +359,30 @@ func convertRegistryValue(value interface{}, targetType reflect.Type) interface{
 				}
 			}
 			return result
+		default:
+			return nil
+		}
+	}
+
+	// Handle int fields (DWORD or decimal string)
+	if targetType.Kind() == reflect.Int || targetType.Kind() == reflect.Int32 || targetType.Kind() == reflect.Int64 {
+		switch v := value.(type) {
+		case int:
+			return v
+		case int32:
+			return int(v)
+		case int64:
+			return int(v)
+		case uint32:
+			return int(v)
+		case uint64:
+			return int(v)
+		case string:
+			n, err := strconv.Atoi(strings.TrimSpace(v))
+			if err != nil {
+				return nil
+			}
+			return n
 		default:
 			return nil
 		}
@@ -1100,6 +1125,12 @@ func DefaultValue(name string) (interface{}, error) {
 			return nil, fmt.Errorf("invalid default bool for setting %q: %w", name, err)
 		}
 		return value, nil
+	case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64:
+		value, err := strconv.ParseInt(defaultRaw, 10, 64)
+		if err != nil {
+			return nil, fmt.Errorf("invalid default int for setting %q: %w", name, err)
+		}
+		return int(value), nil
 	case reflect.Slice:
 		// Handle []string defaults by splitting on comma
 		if field.Type.Elem().Kind() == reflect.String {

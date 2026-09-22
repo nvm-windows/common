@@ -27,6 +27,28 @@ func SignVersionScripts(versionDir string) error {
 	return signVersionScripts(dataRoot, versionDir)
 }
 
+// SignScript force-resigns one delegated .cmd/.bat/.js launcher, bypassing the
+// TrustedModules gate. Used after the user accepts a trust prompt so VerifyCache
+// can be refreshed before the next launch retry.
+func SignScript(scriptPath string) error {
+	scriptPath = strings.TrimSpace(scriptPath)
+	if scriptPath == "" {
+		return fmt.Errorf("script path is empty")
+	}
+	dataRoot, err := dataRootFromVersionDir(filepath.Dir(scriptPath))
+	if err != nil {
+		// nested paths (node_modules/.../npm-cli.js): walk up to installs/vX
+		dataRoot, err = dataRootFromSettings()
+		if err != nil {
+			return err
+		}
+	}
+	if err := EnsureVerifyKey(dataRoot); err != nil {
+		return err
+	}
+	return signDelegatedScript(dataRoot, scriptPath, true)
+}
+
 func signVersionScripts(dataRoot, versionDir string) error {
 	versionDir = filepath.Clean(strings.TrimSpace(versionDir))
 	if versionDir == "" {
@@ -55,7 +77,7 @@ func signVersionScripts(dataRoot, versionDir string) error {
 		path := filepath.Join(versionDir, name)
 		switch ext {
 		case ".cmd", ".bat":
-			if err := signDelegatedScript(dataRoot, path); err != nil && firstErr == nil {
+			if err := signDelegatedScript(dataRoot, path, false); err != nil && firstErr == nil {
 				firstErr = err
 			}
 		case ".exe":
@@ -71,7 +93,7 @@ func signVersionScripts(dataRoot, versionDir string) error {
 		if _, err := os.Stat(cliPath); err != nil {
 			continue
 		}
-		if err := signDelegatedScript(dataRoot, cliPath); err != nil && firstErr == nil {
+		if err := signDelegatedScript(dataRoot, cliPath, false); err != nil && firstErr == nil {
 			firstErr = err
 		}
 	}
@@ -86,13 +108,16 @@ func packageManagerCliRelPaths() []string {
 	}
 }
 
-func signDelegatedScript(dataRoot, scriptPath string) error {
+func signDelegatedScript(dataRoot, scriptPath string, force bool) error {
 	scriptPath = strings.TrimSpace(scriptPath)
 	if scriptPath == "" {
 		return fmt.Errorf("script path is empty")
 	}
 
 	if err := verifyDelegatedScript(dataRoot, scriptPath); err == nil {
+		return nil
+	} else if !force && isDiskChangeVerifyError(err) && !mayResignChangedModule(scriptPath) {
+		// Leave VerifyCache stale for untrusted self-updates (deny/prompt).
 		return nil
 	}
 

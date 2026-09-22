@@ -1,6 +1,10 @@
 package mirrorauth
 
-import "net/url"
+import (
+	"common/modulefirewall"
+	"net/url"
+	"strings"
+)
 
 // Implementation identifies which mirrorauth module is linked.
 // "stub" = community/no-op; "certified" = mirror license JWT for Author mirrors.
@@ -36,3 +40,19 @@ func SetAllowClaimFunc(fn func() ([]string, error)) {}
 
 // AllowVersionClaimExpansion is always true in OSS builds (no JWT builder).
 func AllowVersionClaimExpansion() bool { return true }
+
+// MintFirewallJWT is a no-op stub for community builds.
+func MintFirewallJWT(audience string, ctx modulefirewall.RequestContext) (string, error) {
+	_ = audience
+	_ = ctx
+	return "", nil
+}
+
+// FirewallAudienceHost extracts host from an HTTPS policy URL.
+func FirewallAudienceHost(endpoint string) string {
+	u, err := url.Parse(strings.TrimSpace(endpoint))
+	if err != nil || u.Host == "" {
+		return ""
+	}
+	return strings.ToLower(u.Host)
+}

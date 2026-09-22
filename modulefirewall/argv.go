@@ -75,7 +75,7 @@ func npmInstallLike(args []string) bool {
 	}
 	sub := strings.ToLower(args[0])
 	switch sub {
-	case "install", "i", "add", "in", "ins", "inst", "insta", "instal", "isnt", "isntal", "isntall":
+	case "install", "i", "add", "in", "ins", "inst", "insta", "instal", "isnt", "isntal", "isntall", "ci":
 		return true
 	case "exec":
 		return true
@@ -90,7 +90,7 @@ func pnpmInstallLike(args []string) bool {
 	}
 	sub := strings.ToLower(args[0])
 	switch sub {
-	case "install", "i", "add", "exec", "dlx":
+	case "install", "i", "add", "exec", "dlx", "ci":
 		return true
 	default:
 		return false
