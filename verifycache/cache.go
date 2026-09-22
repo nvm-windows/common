@@ -41,6 +41,10 @@ func SignNodeCacheWithSigners(nodeExePath string, allowedSigners []string) error
 	// Hot path: unchanged node.exe with a valid TPM cache entry skips WinVerifyTrust.
 	if err := verifyNodeCache(dataRoot, nodeExePath, allowedSigners); err == nil {
 		return nil
+	} else if !strings.EqualFold(filepath.Base(nodeExePath), "node.exe") &&
+		isDiskChangeVerifyError(err) && !mayResignChangedModule(nodeExePath) {
+		// Non-node helpers follow the same TrustedModules / allow gate as scripts.
+		return nil
 	}
 
 	if _, err := verify.VerifyNodeExecutable(nodeExePath, allowedSigners); err != nil {

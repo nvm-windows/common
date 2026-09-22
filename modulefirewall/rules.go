@@ -41,8 +41,9 @@ func NormalizeList(entries []string, defaultSeed string) []string {
 	return out
 }
 
-// ExtractHTTPSURL returns the sole HTTPS URL if the list is URL-mode (one https URL,
-// other entries ignored). ok=false when local rules apply.
+// ExtractHTTPSURL returns an HTTPS policy URL if present. Other list entries
+// remain valid for TrustedModules local evaluation (remote is only used for
+// modules that are not trusted locally).
 func ExtractHTTPSURL(entries []string) (endpoint string, ok bool) {
 	for _, e := range entries {
 		e = strings.TrimSpace(e)
