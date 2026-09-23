@@ -63,12 +63,14 @@ func CollectStatus(dataRoot string) (Status, error) {
 	return status, nil
 }
 
-// RepairForDoctor recreates missing pubkey material and re-signs the active node.exe.
+// RepairForDoctor recreates missing pubkey material and re-signs every
+// installed Node version, including package-manager entrypoints left unsigned
+// by a 2.0.0 upgrade.
 func RepairForDoctor(dataRoot string) error {
 	if err := EnsureVerifyKey(dataRoot); err != nil {
 		return err
 	}
-	return PrewarmVerifyCache(false)
+	return PrewarmVerifyCache(true)
 }
 
 // WriteDoctorReport prints verify-cache status for nvm doctor.
