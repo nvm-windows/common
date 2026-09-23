@@ -38,7 +38,7 @@ func StripHTTPSURLs(entries []string) []string {
 
 // IsPackageTrustedLocal evaluates TrustedModules local rules only (HTTPS URLs ignored).
 func IsPackageTrustedLocal(pkg PackageSpec, trustedModules []string) (bool, error) {
-	rules := NormalizeList(trustedModules, DefaultTrustedWhenEmpty)
+	rules := NormalizeTrustedModules(trustedModules)
 	local := StripHTTPSURLs(rules)
 	local = NormalizeList(local, DefaultTrustedWhenEmpty)
 	return isPackageAllowedLocal(pkg, local)
@@ -59,7 +59,7 @@ func EvaluateTrustedModulesRequest(pkgs []PackageSpec, trustedModules []string, 
 		return TrustResult{Trusted: true}
 	}
 
-	rules := NormalizeList(trustedModules, DefaultTrustedWhenEmpty)
+	rules := NormalizeTrustedModules(trustedModules)
 	endpoint, hasURL := ExtractHTTPSURL(rules)
 	local := NormalizeList(StripHTTPSURLs(rules), DefaultTrustedWhenEmpty)
 

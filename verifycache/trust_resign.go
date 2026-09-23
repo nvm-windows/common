@@ -64,7 +64,7 @@ func mayResignChangedModule(path string) bool {
 		return true
 	}
 
-	rules := modulefirewall.NormalizeList(cfg.TrustedModules, modulefirewall.DefaultTrustedWhenEmpty)
+	rules := modulefirewall.NormalizeTrustedModules(cfg.TrustedModules)
 	name := moduleNameFromPath(path)
 	pkg := modulefirewall.PackageSpec{Name: name, Raw: name}
 

@@ -9,11 +9,22 @@ import (
 )
 
 const (
-	// DefaultTrustedWhenEmpty is applied when TrustedModules is unset/empty.
+	// DefaultTrustedWhenEmpty is the deny-all seed used when a TrustedModules
+	// list has no local rules left (for example a URL-only policy).
 	DefaultTrustedWhenEmpty = "NOT ALL"
 	// DefaultApprovedWhenEmpty is applied when ApprovedModules / ApprovedGlobalModules is unset/empty.
 	DefaultApprovedWhenEmpty = "ALL"
 )
+
+// NormalizeTrustedModules applies the empty TrustedModules default:
+// deny every module except npm and npx, so npm's own upgrade can re-sign.
+func NormalizeTrustedModules(entries []string) []string {
+	normalized := NormalizeList(entries, "")
+	if len(normalized) == 0 {
+		return []string{"NOT ALL", "npm", "npx"}
+	}
+	return normalized
+}
 
 // PackageSpec is a requested install/exec package identity.
 type PackageSpec struct {

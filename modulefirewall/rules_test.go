@@ -5,6 +5,40 @@ import (
 	"testing"
 )
 
+func TestNormalizeTrustedModules_DefaultTrustsNpm(t *testing.T) {
+	got := NormalizeTrustedModules(nil)
+	want := []string{"NOT ALL", "npm", "npx"}
+	if len(got) != len(want) {
+		t.Fatalf("got %#v", got)
+	}
+	for i := range want {
+		if got[i] != want[i] {
+			t.Fatalf("got %#v, want %#v", got, want)
+		}
+	}
+
+	npm, _ := ParsePackageToken("npm")
+	ok, err := IsPackageTrustedLocal(npm, nil)
+	if err != nil || !ok {
+		t.Fatalf("npm default trust = %v err=%v", ok, err)
+	}
+	npx, _ := ParsePackageToken("npx")
+	ok, err = IsPackageTrustedLocal(npx, nil)
+	if err != nil || !ok {
+		t.Fatalf("npx default trust = %v err=%v", ok, err)
+	}
+	other, _ := ParsePackageToken("eslint")
+	ok, err = IsPackageTrustedLocal(other, nil)
+	if err != nil || ok {
+		t.Fatalf("eslint should stay untrusted, allowed=%v err=%v", ok, err)
+	}
+
+	explicit := NormalizeTrustedModules([]string{"NOT ALL"})
+	if len(explicit) != 1 || explicit[0] != "NOT ALL" {
+		t.Fatalf("explicit list = %#v", explicit)
+	}
+}
+
 func TestIsPackageAllowed_NotAllWithException(t *testing.T) {
 	rules := []string{"NOT ALL", "porthog"}
 	pkg, _ := ParsePackageToken("porthog")
