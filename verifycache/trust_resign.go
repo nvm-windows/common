@@ -35,7 +35,7 @@ func moduleNameFromPath(path string) string {
 func isAlwaysResignModule(path string) bool {
 	name := strings.ToLower(moduleNameFromPath(path))
 	switch name {
-	case "node", "npm", "npx", "pnpm", "yarn", "corepack", "vlt":
+	case "node", "npm", "npx", "pnpm", "yarn", "yarnpkg", "corepack", "vlt":
 		return true
 	}
 	lower := strings.ToLower(filepath.ToSlash(path))
