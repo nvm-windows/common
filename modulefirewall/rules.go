@@ -17,11 +17,12 @@ const (
 )
 
 // NormalizeTrustedModules applies the empty TrustedModules default:
-// deny every module except npm and npx, so npm's own upgrade can re-sign.
+// deny every module except bundled package managers, so npm/yarn/corepack
+// can re-sign after an upgrade.
 func NormalizeTrustedModules(entries []string) []string {
 	normalized := NormalizeList(entries, "")
 	if len(normalized) == 0 {
-		return []string{"NOT ALL", "npm", "npx"}
+		return []string{"NOT ALL", "npm", "npx", "yarn", "yarnpkg", "corepack", "pnpm"}
 	}
 	return normalized
 }

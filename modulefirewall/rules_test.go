@@ -7,7 +7,7 @@ import (
 
 func TestNormalizeTrustedModules_DefaultTrustsNpm(t *testing.T) {
 	got := NormalizeTrustedModules(nil)
-	want := []string{"NOT ALL", "npm", "npx"}
+	want := []string{"NOT ALL", "npm", "npx", "yarn", "yarnpkg", "corepack", "pnpm"}
 	if len(got) != len(want) {
 		t.Fatalf("got %#v", got)
 	}
@@ -26,6 +26,16 @@ func TestNormalizeTrustedModules_DefaultTrustsNpm(t *testing.T) {
 	ok, err = IsPackageTrustedLocal(npx, nil)
 	if err != nil || !ok {
 		t.Fatalf("npx default trust = %v err=%v", ok, err)
+	}
+	yarn, _ := ParsePackageToken("yarn")
+	ok, err = IsPackageTrustedLocal(yarn, nil)
+	if err != nil || !ok {
+		t.Fatalf("yarn default trust = %v err=%v", ok, err)
+	}
+	corepack, _ := ParsePackageToken("corepack")
+	ok, err = IsPackageTrustedLocal(corepack, nil)
+	if err != nil || !ok {
+		t.Fatalf("corepack default trust = %v err=%v", ok, err)
 	}
 	other, _ := ParsePackageToken("eslint")
 	ok, err = IsPackageTrustedLocal(other, nil)
