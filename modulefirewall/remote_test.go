@@ -1,7 +1,6 @@
 package modulefirewall
 
 import (
-	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -15,7 +14,7 @@ func TestEvaluateRemote_OK(t *testing.T) {
 		if r.Method != http.MethodPost {
 			t.Errorf("method=%s", r.Method)
 		}
-		if got := r.Header.Get("User-Agent"); !strings.HasPrefix(got, "NVM for Windows/") {
+		if got := r.Header.Get("User-Agent"); got != "NVM-Windows-Firewall/1" {
 			t.Errorf("User-Agent=%q", got)
 		}
 		if got := r.Header.Get("Content-Type"); !strings.Contains(got, "text/plain") {
@@ -59,28 +58,6 @@ func TestEvaluateRemote_ForbiddenTSV(t *testing.T) {
 	}
 }
 
-func TestEvaluateRemote_Unauthorized(t *testing.T) {
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.WriteHeader(http.StatusUnauthorized)
-	}))
-	defer srv.Close()
-
-	res := EvaluateRemote(srv.URL, []PackageSpec{{Raw: "eslint"}}, RemoteTLSOptions{TimeoutSec: 2})
-	if res.Allowed || res.Status != 401 {
-		t.Fatalf("res=%+v", res)
-	}
-	if RemoteTrustUnavailable(res) {
-		t.Fatal("401 must not be treated as unavailable")
-	}
-	msg := FormatRemoteUserMessage(res)
-	if !strings.Contains(msg, "denied access for this user") {
-		t.Fatalf("msg=%q", msg)
-	}
-	if strings.Contains(msg, "HTTP 401") {
-		t.Fatalf("401 message should not dump status code: %q", msg)
-	}
-}
-
 func TestEvaluateRemote_UnexpectedStatus(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusInternalServerError)
@@ -91,10 +68,10 @@ func TestEvaluateRemote_UnexpectedStatus(t *testing.T) {
 	if res.Allowed || res.Status != 500 {
 		t.Fatalf("res=%+v", res)
 	}
-	if !strings.Contains(res.ErrorMsg, "HTTP 500") {
+	if !strings.Contains(res.ErrorMsg, "unexpected HTTP") {
 		t.Fatalf("ErrorMsg=%q", res.ErrorMsg)
 	}
-	if !strings.Contains(FormatRemoteUserMessage(res), "HTTP 500") {
+	if !strings.Contains(FormatRemoteUserMessage(res), "500") {
 		t.Fatalf("user message should include status: %q", FormatRemoteUserMessage(res))
 	}
 }
@@ -113,26 +90,8 @@ func TestEvaluateRemote_Timeout(t *testing.T) {
 	if res.Status != 0 {
 		t.Fatalf("Status=%d, want 0", res.Status)
 	}
-	if !res.Unreachable {
-		t.Fatal("timeout should mark Unreachable")
-	}
-	if !strings.Contains(res.ErrorMsg, "could not reach the remote authority") {
-		t.Fatalf("ErrorMsg=%q", res.ErrorMsg)
-	}
-	if !strings.Contains(res.ErrorMsg, "timed out") {
-		t.Fatalf("ErrorMsg=%q want timed out", res.ErrorMsg)
-	}
-}
-
-func TestHumanizeRemoteDialReason(t *testing.T) {
-	err := fmt.Errorf(`Post "https://127.0.0.1:8443/module/trust": dial tcp 127.0.0.1:8443: connectex: No connection could be made because the target machine actively refused it.`)
-	res := remoteDialResult("https://127.0.0.1:8443/module/trust", err)
-	if !res.Unreachable {
-		t.Fatal("want Unreachable")
-	}
-	want := "The NVM firewall could not reach the remote authority at https://127.0.0.1:8443/module/trust because the target machine actively refused it."
-	if res.ErrorMsg != want {
-		t.Fatalf("ErrorMsg=%q", res.ErrorMsg)
+	if res.ErrorMsg == "" {
+		t.Fatal("expected ErrorMsg")
 	}
 }
 

@@ -76,9 +76,7 @@ func mayResignChangedModule(path string) bool {
 	// HTTPS URL present: query remote only for this untrusted module.
 	if _, hasURL := modulefirewall.ExtractHTTPSURL(rules); hasURL {
 		res := modulefirewall.EvaluateTrustedModules([]modulefirewall.PackageSpec{pkg}, rules, modulefirewall.RemoteTLSOptions{
-			TimeoutSec:         cfg.FirewallHTTPTimeoutSeconds,
-			AllowedOrgs:        cfg.TrustedFirewallSigners,
-			AllowedThumbprints: cfg.TrustedFirewallThumbprint,
+			TimeoutSec: cfg.FirewallHTTPTimeoutSeconds,
 		})
 		return res.Trusted
 	}

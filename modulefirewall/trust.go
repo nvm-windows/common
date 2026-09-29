@@ -2,12 +2,11 @@ package modulefirewall
 
 import (
 	"fmt"
-	"net/http"
 	"strings"
 )
 
-// evaluateRemoteRequestFn is EvaluateRemoteRequest; tests may swap it.
-var evaluateRemoteRequestFn = EvaluateRemoteRequest
+// evaluateRemoteFn is EvaluateRemote; tests may swap it to avoid real HTTPS.
+var evaluateRemoteFn = EvaluateRemote
 
 // TrustResult is the outcome of EvaluateTrustedModules.
 type TrustResult struct {
@@ -50,11 +49,6 @@ func IsPackageTrustedLocal(pkg PackageSpec, trustedModules []string) (bool, erro
 // If HTTP is attempted and there is no usable response, modules are treated as
 // untrusted and Message explains that the remote trust service is unavailable.
 func EvaluateTrustedModules(pkgs []PackageSpec, trustedModules []string, opts RemoteTLSOptions) TrustResult {
-	return EvaluateTrustedModulesRequest(pkgs, trustedModules, RemoteRequestOptions{RemoteTLSOptions: opts})
-}
-
-// EvaluateTrustedModulesRequest is EvaluateTrustedModules with full remote request options.
-func EvaluateTrustedModulesRequest(pkgs []PackageSpec, trustedModules []string, opts RemoteRequestOptions) TrustResult {
 	if len(pkgs) == 0 {
 		return TrustResult{Trusted: true}
 	}
@@ -85,7 +79,7 @@ func EvaluateTrustedModulesRequest(pkgs []PackageSpec, trustedModules []string, 
 		return TrustResult{Trusted: false, Untrusted: needRemote}
 	}
 
-	res := evaluateRemoteRequestFn(endpoint, needRemote, opts)
+	res := evaluateRemoteFn(endpoint, needRemote, opts)
 	if !res.Allowed {
 		return TrustResult{
 			Trusted:       false,
@@ -106,13 +100,11 @@ func RemoteTrustUnavailable(res RemoteResult) bool {
 	if res.Status == 0 {
 		return true
 	}
-	// Clear policy/auth answers from the authority — not "unavailable".
-	switch res.Status {
-	case http.StatusOK, http.StatusUnauthorized, http.StatusForbidden:
-		return false
-	default:
+	// Non-200/403 (or empty) responses are not a clear trust deny — treat as unavailable.
+	if res.Status != 200 && res.Status != 403 {
 		return true
 	}
+	return false
 }
 
 // isPackageAllowedLocal is IsPackageAllowed without HTTPS rejection (caller already stripped URLs).

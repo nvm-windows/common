@@ -14,12 +14,12 @@ func TestStripHTTPSURLs(t *testing.T) {
 
 func TestEvaluateTrustedModules_AllLocalNoHTTP(t *testing.T) {
 	var hits int
-	prev := evaluateRemoteRequestFn
-	evaluateRemoteRequestFn = func(endpoint string, modules []PackageSpec, opts RemoteRequestOptions) RemoteResult {
+	prev := evaluateRemoteFn
+	evaluateRemoteFn = func(endpoint string, modules []PackageSpec, opts RemoteTLSOptions) RemoteResult {
 		hits++
 		return RemoteResult{Allowed: true, Status: 200}
 	}
-	defer func() { evaluateRemoteRequestFn = prev }()
+	defer func() { evaluateRemoteFn = prev }()
 
 	rules := []string{"NOT ALL", "eslint", "https://policy.example/trust"}
 	res := EvaluateTrustedModules([]PackageSpec{{Name: "eslint", Raw: "eslint"}}, rules, RemoteTLSOptions{TimeoutSec: 2})
@@ -33,12 +33,12 @@ func TestEvaluateTrustedModules_AllLocalNoHTTP(t *testing.T) {
 
 func TestEvaluateTrustedModules_RemoteOnlyUntrusted(t *testing.T) {
 	var gotMods []PackageSpec
-	prev := evaluateRemoteRequestFn
-	evaluateRemoteRequestFn = func(endpoint string, modules []PackageSpec, opts RemoteRequestOptions) RemoteResult {
+	prev := evaluateRemoteFn
+	evaluateRemoteFn = func(endpoint string, modules []PackageSpec, opts RemoteTLSOptions) RemoteResult {
 		gotMods = append([]PackageSpec(nil), modules...)
 		return RemoteResult{Allowed: true, Status: 200}
 	}
-	defer func() { evaluateRemoteRequestFn = prev }()
+	defer func() { evaluateRemoteFn = prev }()
 
 	rules := []string{"NOT ALL", "lodash", "https://policy.example/trust"}
 	pkgs := []PackageSpec{
@@ -55,16 +55,11 @@ func TestEvaluateTrustedModules_RemoteOnlyUntrusted(t *testing.T) {
 }
 
 func TestEvaluateTrustedModules_NoResponseUntrustedMessage(t *testing.T) {
-	prev := evaluateRemoteRequestFn
-	evaluateRemoteRequestFn = func(endpoint string, modules []PackageSpec, opts RemoteRequestOptions) RemoteResult {
-		return RemoteResult{
-			Allowed:     false,
-			Status:      0,
-			Unreachable: true,
-			ErrorMsg:    "The NVM firewall could not reach the remote authority at https://policy.example/trust because the connection timed out.",
-		}
+	prev := evaluateRemoteFn
+	evaluateRemoteFn = func(endpoint string, modules []PackageSpec, opts RemoteTLSOptions) RemoteResult {
+		return RemoteResult{Allowed: false, Status: 0, ErrorMsg: "firewall remote: request failed: timeout"}
 	}
-	defer func() { evaluateRemoteRequestFn = prev }()
+	defer func() { evaluateRemoteFn = prev }()
 
 	rules := []string{"NOT ALL", "https://policy.example/trust"}
 	res := EvaluateTrustedModules([]PackageSpec{{Name: "eslint", Raw: "eslint"}}, rules, RemoteTLSOptions{TimeoutSec: 1})
@@ -74,7 +69,7 @@ func TestEvaluateTrustedModules_NoResponseUntrustedMessage(t *testing.T) {
 	if !res.RemoteQueried {
 		t.Fatalf("want remote queried")
 	}
-	if !strings.Contains(res.Message, "could not reach the remote authority") {
+	if !strings.Contains(res.Message, "request failed") {
 		t.Fatalf("message=%q", res.Message)
 	}
 	if strings.Contains(res.Message, "HTTP 403") || strings.Contains(res.Message, "HTTP 200") {
@@ -102,8 +97,8 @@ func TestIsPackageTrustedLocal_URLOnlyDenies(t *testing.T) {
 
 func TestEvaluateTrustedModules_URLOnlyQueriesRemote(t *testing.T) {
 	var hits int
-	prev := evaluateRemoteRequestFn
-	evaluateRemoteRequestFn = func(endpoint string, modules []PackageSpec, opts RemoteRequestOptions) RemoteResult {
+	prev := evaluateRemoteFn
+	evaluateRemoteFn = func(endpoint string, modules []PackageSpec, opts RemoteTLSOptions) RemoteResult {
 		hits++
 		if endpoint != "https://127.0.0.1:8443/module/trust" {
 			t.Errorf("endpoint=%s", endpoint)
@@ -113,7 +108,7 @@ func TestEvaluateTrustedModules_URLOnlyQueriesRemote(t *testing.T) {
 		}
 		return RemoteResult{Allowed: false, Status: 403}
 	}
-	defer func() { evaluateRemoteRequestFn = prev }()
+	defer func() { evaluateRemoteFn = prev }()
 
 	res := EvaluateTrustedModules(
 		[]PackageSpec{{Name: "opencode", Raw: "opencode"}},
@@ -122,5 +117,8 @@ func TestEvaluateTrustedModules_URLOnlyQueriesRemote(t *testing.T) {
 	)
 	if res.Trusted || !res.RemoteQueried || hits != 1 {
 		t.Fatalf("want remote 403 untrusted, got %#v hits=%d", res, hits)
+	}
+	if res.Message != "blocked by remote policy" {
+		t.Fatalf("message=%q", res.Message)
 	}
 }

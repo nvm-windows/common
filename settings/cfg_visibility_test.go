@@ -25,4 +25,13 @@ func TestListUserCfgExcludesHiddenAndLicensingKeys(t *testing.T) {
 	if !slices.Contains(keys, "proxy") {
 		t.Fatal("ListUserCfg() should still expose hidden-doc keys like proxy")
 	}
+	if !slices.Contains(keys, "untrusted_module_handler_action") {
+		t.Fatal("ListUserCfg() missing untrusted_module_handler_action")
+	}
+	if settings.IsHiddenCfg("untrusted_module_handler_action") {
+		t.Fatal("untrusted_module_handler_action should be visible in cfg ls")
+	}
+	if !settings.IsHiddenCfg("trusted_modules") {
+		t.Fatal("trusted_modules should stay hidden (use nvm fw trust module)")
+	}
 }

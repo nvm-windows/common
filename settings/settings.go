@@ -17,7 +17,6 @@ import (
 )
 
 var AppId string
-var ProductVersion string
 var CheckURL string
 var ScheduleURL string
 var semverPattern = regexp.MustCompile(`^v?\d+\.\d+\.\d+(-[0-9A-Za-z.-]+)?(\+[0-9A-Za-z.-]+)?$`)
@@ -210,8 +209,7 @@ func applyMachineOnlySettings() {
 func isSecurityPolicySetting(name string) bool {
 	switch name {
 	case "allowed_signers", "allow_insecure_downloads", "local_install_only", "air_gapped",
-		"approved_modules", "approved_global_modules", "trusted_modules", "untrusted_module_handler_action",
-		"trusted_firewall_signers", "trusted_firewall_thumbprint", "firewall_http_timeout_seconds":
+		"trusted_modules", "untrusted_module_handler_action":
 		return true
 	default:
 		return false
