@@ -31,7 +31,7 @@ type ProgramRootCheck struct {
 
 // isCommunityEditionForLayout is injectable for tests.
 var isCommunityEditionForLayout = func() bool {
-	return Edition() == communityEdition
+	return IsCommunityBuild()
 }
 
 // localAppDataDir is injectable for tests.
@@ -57,8 +57,9 @@ func ExpectedCommunityProgramRootPrefix() (string, error) {
 }
 
 // CheckCommunityProgramRoot reports whether programRoot is under the expected
-// community LocalAppData install prefix. Commercial editions are skipped.
-// Warnings are advisory (unsupported / trust-boundary), not a hard failure.
+// community LocalAppData install prefix. Certified (non-community) builds are
+// skipped — Program Files is their supported layout. Warnings are advisory
+// (unsupported / trust-boundary), not a hard failure.
 func CheckCommunityProgramRoot(programRoot string) ProgramRootCheck {
 	root := filepath.Clean(strings.TrimSpace(programRoot))
 	result := ProgramRootCheck{ProgramRoot: root}

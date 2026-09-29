@@ -33,6 +33,8 @@ func setupVerifyCacheTestProfile(t *testing.T) string {
 	}
 	settings.Load(true)
 
+	SetAllowSignChanged(false)
+
 	return dataRoot
 }
 

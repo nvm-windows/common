@@ -86,6 +86,40 @@ func parentPIDOf(pid uint32) (uint32, bool) {
 	return 0, false
 }
 
+// ParentProcessExecutable returns the immediate parent process image file name.
+func ParentProcessExecutable() string {
+	pid, _, _ := getCurrentProcessId.Call()
+	parent, ok := parentPIDOf(uint32(pid))
+	if !ok || parent == 0 {
+		return "unknown"
+	}
+	name, ok := processExecutableName(parent)
+	if !ok || strings.TrimSpace(name) == "" {
+		return "unknown"
+	}
+	return name
+}
+
+func processExecutableName(pid uint32) (string, bool) {
+	h, err := syscall.CreateToolhelp32Snapshot(syscall.TH32CS_SNAPPROCESS, 0)
+	if err != nil {
+		return "", false
+	}
+	defer syscall.CloseHandle(h)
+
+	var entry syscall.ProcessEntry32
+	entry.Size = uint32(unsafe.Sizeof(entry))
+
+	err = syscall.Process32First(h, &entry)
+	for err == nil {
+		if entry.ProcessID == pid {
+			return syscall.UTF16ToString(entry.ExeFile[:]), true
+		}
+		err = syscall.Process32Next(h, &entry)
+	}
+	return "", false
+}
+
 func IsProcessStartedByExplorer() bool {
 	ppid := os.Getppid()
 	if ppid == 0 {
