@@ -262,6 +262,42 @@ func securityPolicyLookupKeys(name string) []string {
 	return keys
 }
 
+// EnforcementSource names the store that supplied a security setting.
+// machine policy, machine settings, or your settings.
+func EnforcementSource(name string) string {
+	keys := securityPolicyLookupKeys(name)
+	policyCount := len(securityPolicyRegKeys(name))
+	regName := key(name)
+	machineKey := joinedRegKey(prefs.MACHINE_PREFERENCE_ROOT, regName)
+	userKey := joinedRegKey(prefs.USER_PREFERENCE_ROOT, regName)
+	for i, k := range keys {
+		_, exists, err := registry.Get(k)
+		if err != nil || !exists {
+			continue
+		}
+		switch {
+		case i < policyCount:
+			return "machine policy"
+		case k == machineKey:
+			return "machine settings"
+		case k == userKey:
+			return "your settings"
+		default:
+			return "your settings"
+		}
+	}
+	return "your settings"
+}
+
+func joinedRegKey(root, name string) string {
+	root = strings.TrimRight(strings.TrimSpace(root), "/")
+	name = strings.TrimSpace(name)
+	if root == "" || name == "" {
+		return ""
+	}
+	return root + "/" + name
+}
+
 func applySecurityPolicyOverrides() {
 	if len(prefs.SECURITY_POLICY_ROOTS) == 0 {
 		return
