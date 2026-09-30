@@ -2,6 +2,7 @@ package settings_test
 
 import (
 	prefs "common/preferences"
+	"common/registry"
 	"common/settings"
 	"os/exec"
 	"reflect"
@@ -9,6 +10,43 @@ import (
 )
 
 const firewallSettingsTestRoot = "HKCU/Software/NVMTest/firewall_settings"
+
+func TestEnforcementSource(t *testing.T) {
+	oldSecurity := append([]string(nil), prefs.SECURITY_POLICY_ROOTS...)
+	oldMachine := prefs.MACHINE_PREFERENCE_ROOT
+	oldUser := prefs.USER_PREFERENCE_ROOT
+	root := "HKCU/Software/NVMTest/enforcement_source"
+	prefs.SECURITY_POLICY_ROOTS = []string{root + "/policy"}
+	prefs.MACHINE_PREFERENCE_ROOT = root + "/machine"
+	prefs.USER_PREFERENCE_ROOT = root + "/user"
+	t.Cleanup(func() {
+		_ = exec.Command("reg", "delete", `HKCU\Software\NVMTest\enforcement_source`, "/f").Run()
+		prefs.SECURITY_POLICY_ROOTS = oldSecurity
+		prefs.MACHINE_PREFERENCE_ROOT = oldMachine
+		prefs.USER_PREFERENCE_ROOT = oldUser
+	})
+
+	if err := registry.Put([]string{"https://user.example/trust"}, root+"/user/ApprovedModules"); err != nil {
+		t.Fatalf("seed user: %v", err)
+	}
+	if got := settings.EnforcementSource("approved_modules"); got != "your settings" {
+		t.Fatalf("user source=%q", got)
+	}
+
+	if err := registry.Put([]string{"https://machine.example/trust"}, root+"/machine/ApprovedModules"); err != nil {
+		t.Fatalf("seed machine: %v", err)
+	}
+	if got := settings.EnforcementSource("approved_modules"); got != "machine settings" {
+		t.Fatalf("machine source=%q", got)
+	}
+
+	if err := registry.Put([]string{"https://policy.example/trust"}, root+"/policy/ApprovedModules"); err != nil {
+		t.Fatalf("seed policy: %v", err)
+	}
+	if got := settings.EnforcementSource("approved_modules"); got != "machine policy" {
+		t.Fatalf("policy source=%q", got)
+	}
+}
 
 func withFirewallPrefs(t *testing.T) {
 	t.Helper()
