@@ -1,7 +1,6 @@
 package modulefirewall
 
 import (
-	"bytes"
 	"crypto/sha1"
 	"crypto/tls"
 	"crypto/x509"
@@ -9,7 +8,9 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"os"
 	"strings"
+	"sync"
 	"time"
 )
 
@@ -22,10 +23,11 @@ type RemoteBlock struct {
 
 // RemoteResult is the outcome of EvaluateRemote.
 type RemoteResult struct {
-	Allowed  bool
-	Status   int
-	Blocks   []RemoteBlock
-	ErrorMsg string
+	Allowed     bool
+	Status      int
+	Blocks      []RemoteBlock
+	ErrorMsg    string
+	Unreachable bool // dial/timeout/DNS — distinct from TLS/unexpected HTTP (NVM4409 vs NVM4402)
 }
 
 // RemoteTLSOptions configures HTTPS policy client behavior.
@@ -35,69 +37,15 @@ type RemoteTLSOptions struct {
 	AllowedThumbprints []string // TrustedFirewallThumbprint (SHA-1 leaf hex); empty = no pin
 }
 
-// EvaluateRemote POSTs newline-delimited module names to an HTTPS endpoint.
-func EvaluateRemote(endpoint string, modules []PackageSpec, opts RemoteTLSOptions) RemoteResult {
-	timeoutSec := opts.TimeoutSec
-	if timeoutSec <= 0 {
-		timeoutSec = 3
-	}
-
-	var body bytes.Buffer
-	for _, m := range modules {
-		line := m.Raw
-		if line == "" {
-			line = m.Name
-			if m.Version != "" {
-				line = m.Name + "@" + m.Version
-			}
-		}
-		body.WriteString(line)
-		body.WriteByte('\n')
-	}
-
-	tlsCfg := &tls.Config{
+func makeTLSConfig(opts RemoteTLSOptions) *tls.Config {
+	return &tls.Config{
 		MinVersion:            tls.VersionTLS12,
 		VerifyPeerCertificate: makePeerVerifier(opts.AllowedOrgs, opts.AllowedThumbprints),
 	}
+}
 
-	client := &http.Client{
-		Timeout: time.Duration(timeoutSec) * time.Second,
-		Transport: &http.Transport{
-			TLSClientConfig: tlsCfg,
-		},
-	}
-
-	req, err := http.NewRequest(http.MethodPost, endpoint, &body)
-	if err != nil {
-		return RemoteResult{Allowed: false, ErrorMsg: fmt.Sprintf("firewall remote: bad request: %v", err)}
-	}
-	req.Header.Set("Content-Type", "text/plain; charset=utf-8")
-	req.Header.Set("Accept", "text/plain")
-	req.Header.Set("User-Agent", "NVM-Windows-Firewall/1")
-
-	res, err := client.Do(req)
-	if err != nil {
-		return RemoteResult{Allowed: false, ErrorMsg: fmt.Sprintf("firewall remote: request failed: %v", err)}
-	}
-	defer res.Body.Close()
-	raw, _ := io.ReadAll(io.LimitReader(res.Body, 1<<20))
-
-	switch res.StatusCode {
-	case http.StatusOK:
-		return RemoteResult{Allowed: true, Status: res.StatusCode}
-	case http.StatusForbidden:
-		return RemoteResult{
-			Allowed: false,
-			Status:  res.StatusCode,
-			Blocks:  parseForbiddenBody(string(raw)),
-		}
-	default:
-		return RemoteResult{
-			Allowed:  false,
-			Status:   res.StatusCode,
-			ErrorMsg: fmt.Sprintf("firewall remote: unexpected HTTP %d", res.StatusCode),
-		}
-	}
+func readLimited(r io.Reader, n int64) ([]byte, error) {
+	return io.ReadAll(io.LimitReader(r, n))
 }
 
 func makePeerVerifier(orgs, thumbs []string) func(rawCerts [][]byte, verifiedChains [][]*x509.Certificate) error {
@@ -213,4 +161,48 @@ func parseForbiddenBody(body string) []RemoteBlock {
 		blocks = append(blocks, b)
 	}
 	return blocks
+}
+
+// startRemoteSpinner prints a TTY stderr cue after delay; returned func clears it.
+func startRemoteSpinner(after time.Duration) func() {
+	if after <= 0 {
+		return func() {}
+	}
+	fi, err := os.Stderr.Stat()
+	if err != nil || (fi.Mode()&os.ModeCharDevice) == 0 {
+		return func() {}
+	}
+
+	var (
+		mu      sync.Mutex
+		shown   bool
+		stopped bool
+		done    = make(chan struct{})
+	)
+	go func() {
+		t := time.NewTimer(after)
+		defer t.Stop()
+		select {
+		case <-done:
+			return
+		case <-t.C:
+		}
+		mu.Lock()
+		defer mu.Unlock()
+		if stopped {
+			return
+		}
+		shown = true
+		fmt.Fprint(os.Stderr, "\rrequesting approval...  ")
+	}()
+
+	return func() {
+		close(done)
+		mu.Lock()
+		defer mu.Unlock()
+		stopped = true
+		if shown {
+			fmt.Fprint(os.Stderr, "\r\033[K")
+		}
+	}
 }

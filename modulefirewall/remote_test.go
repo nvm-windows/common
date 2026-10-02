@@ -14,7 +14,7 @@ func TestEvaluateRemote_OK(t *testing.T) {
 		if r.Method != http.MethodPost {
 			t.Errorf("method=%s", r.Method)
 		}
-		if got := r.Header.Get("User-Agent"); got != "NVM-Windows-Firewall/1" {
+		if got := r.Header.Get("User-Agent"); !strings.HasPrefix(got, "NVM for Windows/") {
 			t.Errorf("User-Agent=%q", got)
 		}
 		if got := r.Header.Get("Content-Type"); !strings.Contains(got, "text/plain") {
@@ -68,7 +68,7 @@ func TestEvaluateRemote_UnexpectedStatus(t *testing.T) {
 	if res.Allowed || res.Status != 500 {
 		t.Fatalf("res=%+v", res)
 	}
-	if !strings.Contains(res.ErrorMsg, "unexpected HTTP") {
+	if !strings.Contains(res.ErrorMsg, "HTTP 500") {
 		t.Fatalf("ErrorMsg=%q", res.ErrorMsg)
 	}
 	if !strings.Contains(FormatRemoteUserMessage(res), "500") {
