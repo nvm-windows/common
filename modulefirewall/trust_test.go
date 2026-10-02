@@ -14,12 +14,12 @@ func TestStripHTTPSURLs(t *testing.T) {
 
 func TestEvaluateTrustedModules_AllLocalNoHTTP(t *testing.T) {
 	var hits int
-	prev := evaluateRemoteFn
-	evaluateRemoteFn = func(endpoint string, modules []PackageSpec, opts RemoteTLSOptions) RemoteResult {
+	prev := evaluateRemoteRequestFn
+	evaluateRemoteRequestFn = func(endpoint string, modules []PackageSpec, opts RemoteRequestOptions) RemoteResult {
 		hits++
 		return RemoteResult{Allowed: true, Status: 200}
 	}
-	defer func() { evaluateRemoteFn = prev }()
+	defer func() { evaluateRemoteRequestFn = prev }()
 
 	rules := []string{"NOT ALL", "eslint", "https://policy.example/trust"}
 	res := EvaluateTrustedModules([]PackageSpec{{Name: "eslint", Raw: "eslint"}}, rules, RemoteTLSOptions{TimeoutSec: 2})
@@ -33,12 +33,12 @@ func TestEvaluateTrustedModules_AllLocalNoHTTP(t *testing.T) {
 
 func TestEvaluateTrustedModules_RemoteOnlyUntrusted(t *testing.T) {
 	var gotMods []PackageSpec
-	prev := evaluateRemoteFn
-	evaluateRemoteFn = func(endpoint string, modules []PackageSpec, opts RemoteTLSOptions) RemoteResult {
+	prev := evaluateRemoteRequestFn
+	evaluateRemoteRequestFn = func(endpoint string, modules []PackageSpec, opts RemoteRequestOptions) RemoteResult {
 		gotMods = append([]PackageSpec(nil), modules...)
 		return RemoteResult{Allowed: true, Status: 200}
 	}
-	defer func() { evaluateRemoteFn = prev }()
+	defer func() { evaluateRemoteRequestFn = prev }()
 
 	rules := []string{"NOT ALL", "lodash", "https://policy.example/trust"}
 	pkgs := []PackageSpec{
@@ -55,11 +55,11 @@ func TestEvaluateTrustedModules_RemoteOnlyUntrusted(t *testing.T) {
 }
 
 func TestEvaluateTrustedModules_NoResponseUntrustedMessage(t *testing.T) {
-	prev := evaluateRemoteFn
-	evaluateRemoteFn = func(endpoint string, modules []PackageSpec, opts RemoteTLSOptions) RemoteResult {
+	prev := evaluateRemoteRequestFn
+	evaluateRemoteRequestFn = func(endpoint string, modules []PackageSpec, opts RemoteRequestOptions) RemoteResult {
 		return RemoteResult{Allowed: false, Status: 0, ErrorMsg: "firewall remote: request failed: timeout"}
 	}
-	defer func() { evaluateRemoteFn = prev }()
+	defer func() { evaluateRemoteRequestFn = prev }()
 
 	rules := []string{"NOT ALL", "https://policy.example/trust"}
 	res := EvaluateTrustedModules([]PackageSpec{{Name: "eslint", Raw: "eslint"}}, rules, RemoteTLSOptions{TimeoutSec: 1})
@@ -97,8 +97,8 @@ func TestIsPackageTrustedLocal_URLOnlyDenies(t *testing.T) {
 
 func TestEvaluateTrustedModules_URLOnlyQueriesRemote(t *testing.T) {
 	var hits int
-	prev := evaluateRemoteFn
-	evaluateRemoteFn = func(endpoint string, modules []PackageSpec, opts RemoteTLSOptions) RemoteResult {
+	prev := evaluateRemoteRequestFn
+	evaluateRemoteRequestFn = func(endpoint string, modules []PackageSpec, opts RemoteRequestOptions) RemoteResult {
 		hits++
 		if endpoint != "https://127.0.0.1:8443/module/trust" {
 			t.Errorf("endpoint=%s", endpoint)
@@ -108,7 +108,7 @@ func TestEvaluateTrustedModules_URLOnlyQueriesRemote(t *testing.T) {
 		}
 		return RemoteResult{Allowed: false, Status: 403}
 	}
-	defer func() { evaluateRemoteFn = prev }()
+	defer func() { evaluateRemoteRequestFn = prev }()
 
 	res := EvaluateTrustedModules(
 		[]PackageSpec{{Name: "opencode", Raw: "opencode"}},

@@ -1,54 +1,59 @@
 package settings
 
 type Settings struct {
-	Mode                         string   `cfg:"mode" reg:"OperatingMode" default:"shim" enum:"shim,link" help:"Specifies how Node.js commands and versions are managed, either through shim-based routing or direct junction/symlink linking."`
-	Root                         string   `cfg:"root" reg:"InstallRoot" default:"%LOCALAPPDATA%\\Author Software\\nvm\\installs" help:"Root directory where Node.js versions are installed."`
-	Proxy                        string   `cfg:"proxy" reg:"Proxy" help:"Proxy URL used to download assets." hidden:"true"`
-	ProxyAuth                    string   `cfg:"proxy_auth" reg:"ProxyAuth" help:"Authentication value for the proxy, such as username:password or Bearer <token>." hidden:"true"`
-	ProxyAuthType                string   `cfg:"proxy_auth_type" reg:"ProxyAuthType" help:"Preferred proxy authentication type for the configured proxy." hidden:"true"`
-	NodeMirror                   []string `cfg:"node_mirror" reg:"MirrorNode" default:"https://nodejs.org/dist" help:"Mirror URL(s) for downloading Node.js. Accepts a comma-delimited list."`
-	NpmMirror                    []string `cfg:"npm_mirror" reg:"MirrorNpm" help:"Mirror URL(s) for downloading npm. Accepts a comma-delimited list." default:"https://registry.npmjs.org"`
-	CacheDownloads               bool     `cfg:"cache_downloads" reg:"CacheDownloads" default:"false" help:"Whether to cache downloaded files for offline use."`
-	ActiveVersion                string   `cfg:"active_version" reg:"ActiveVersion"`
-	LastVersion                  string   `cfg:"last_version" reg:"PreviousActiveVersion" help:"The last active version before the current one. Used for 'nvm use last'." hidden:"true"`
-	AutoDetect                   []string `cfg:"auto_detect" reg:"AutoDetect" default:".nvmrc,.node-version,package.json" help:"Project files to inspect for version (shim-only)."` // comma-separated list of files to inspect for version
-	DefaultDetectFile            string   `cfg:"default_detect_file" reg:"DefaultDetectFile" default:".nvmrc" help:"The default file to write to when saving/pinning a version to a project."`
-	AutoUse                      bool     `cfg:"auto_use" reg:"AutoUse" default:"true" help:"Automatically switch to auto-detected version to run the specified scripts without modifying the system version (shim-only)."`
-	AutoInstall                  bool     `cfg:"auto_install" reg:"AutoInstall" default:"false" help:"Automatically install missing auto-detected version (node shim, proxy npm/npx/yarn/pnpm, pin)."`
-	AutoInstallPrompt            bool     `cfg:"auto_install_prompt" reg:"AutoInstallPrompt" default:"true" help:"Prompt before automatically installing missing auto-detected version (node shim, proxy, pin)."`
-	DisableUpgrade               bool     `cfg:"disable_upgrade" reg:"DisableUpgrade" default:"false" help:"Disable nvm upgrades." hidden:"true"`
-	AllowInsecureDownloads       bool     `cfg:"allow_insecure_downloads" reg:"AllowInsecureDownloads" default:"false" help:"Allow expired/invalid SSL certificates when downloading assets." hidden:"false"`
-	AllowDownloadCacheRemoval    bool     `cfg:"allow_download_cache_removal" reg:"AllowDownloadCacheDelete" default:"true" help:"Allow removing cached downloads."`
-	AutoInstallModuleList        []string `cfg:"auto_installed_modules" reg:"AutoInstallModuleList" default:"" help:"Comma-delimited list of global npm modules to automatically install with new Node.js versions."`
-	AllowRootDirChange           bool     `cfg:"allow_root_dir_change" reg:"AllowRootDirChange" default:"true" help:"Allow changing the install root directory." hidden:"true"`
-	LocalInstallDir              string   `cfg:"local_dir" reg:"LocalInstallDir" help:"An alternative directory for installing Node.js versions. This overrides the cache." hidden:"true"`
-	LocalInstallOnly             bool     `cfg:"local_install_only" reg:"LocalInstallOnly" default:"false" help:"Only install Node.js versions from the local install directory." hidden:"true"`
-	AirGapped                    bool     `cfg:"air_gapped" reg:"AirGapped" default:"false" help:"Skip live JWKS; verify AccessToken against the COSE-signed offline JWKS store only." hidden:"true"`
-	NewsFeedURL                  string   `cfg:"news_feed_url" reg:"NewsFeedURL" default:"https://updates.nvm-windows.com/news" help:"URL for fetching news entries." hidden:"true"`
-	ReleaseFeedURL               string   `cfg:"release_feed_url" reg:"ReleaseFeedURL" default:"https://updates.nvm-windows.com/releases" help:"URL for fetching release entries." hidden:"true"`
-	LastUpdateCheck              string   `cfg:"last_update_check" reg:"LastUpdateCheck" help:"The last time updates were checked." hidden:"true"`
-	LastNewsCheck                string   `cfg:"last_news_check" reg:"LastNewsCheck" help:"The last time news was checked." hidden:"true"`
-	LastSyncCheck                string   `cfg:"last_sync_check" reg:"LastSyncCheck" help:"The last time sync app was updated." hidden:"true"`
-	LastLicenseNotice            string   `cfg:"last_license_notice" reg:"LastLicenseNotice" help:"Dedupe key for the last license expiry desktop notice." hidden:"true"`
-	LastLicenseVerifiedAt        string   `cfg:"last_license_verified_at" reg:"LastLicenseVerifiedAt" help:"RFC3339 UTC of last successful online AccessToken verification." hidden:"true"`
-	LastLicenseVerifyAttemptAt   string   `cfg:"last_license_verify_attempt_at" reg:"LastLicenseVerifyAttemptAt" help:"RFC3339 UTC of last online AccessToken verification attempt." hidden:"true"`
-	LastLicenseVerifyNotice      string   `cfg:"last_license_verify_notice" reg:"LastLicenseVerifyNotice" help:"Dedupe key for license revalidation warning toasts." hidden:"true"`
-	Aliases                      []string `cfg:"aliases" reg:"Aliases" default:"" help:"Comma-delimited list of version aliases in the format alias=version." hidden:"true"`
-	AllowedSigners               []string `cfg:"allowed_signers" reg:"AllowedSigners" help:"Comma-delimited signer organization names (O=) allowed after Authenticode chain verification. Use to restrict vendors (for example OpenJS Foundation vs NodeSource)." hidden:"true"`
-	AllowedThumbprints           []string `cfg:"allowed_thumbprints" reg:"AllowedThumbprints" help:"Optional comma-delimited SHA-1 Authenticode leaf thumbprints (hex). When set, node.exe must match one pin after org allowlist. Empty disables pinning." hidden:"true"`
-	TrustedModules               []string `cfg:"trusted_modules" reg:"TrustedModules" help:"Trust firewall: modules allowed to auto-reshim after self-update. NOT/! negation; empty defaults to NOT ALL plus npm, npx, yarn, yarnpkg, corepack, and pnpm. May include an HTTPS policy URL; local entries are checked first and only untrusted modules are POSTed to the URL." hidden:"true"`
-	UntrustedModuleHandlerAction string   `cfg:"untrusted_module_handler_action" reg:"UntrustedModuleHandlerAction" default:"prompt" enum:"deny,prompt,allow" help:"Action when a global module changes without TrustedModules hit: prompt (default), allow (auto-reshim + quiet toast), or deny." hidden:"false"`
-	FirewallHTTPTimeoutSeconds   int      `cfg:"firewall_http_timeout_seconds" reg:"FirewallHTTPTimeoutSeconds" default:"3" help:"Timeout seconds for HTTPS TrustedModules policy URL POSTs." hidden:"true"`
-	AuthenticodeRevocation       string   `cfg:"authenticode_revocation" reg:"AuthenticodeRevocation" default:"online" enum:"online,cached,disabled" help:"Certificate revocation mode for Authenticode. Seed paths (install/use/sign) honor this; shim runtime never uses online (clamped to cached) so warm launches stay fast. AirGapped forces cached when online would apply." hidden:"true"`
-	LogExecutions                bool     `cfg:"log_executions" reg:"LogExecutions" default:"false" help:"Whether to log every Node.js invocation (ex: node file.js). (shim-only)" hidden:"false"`
-	EnforcePermissionModel         bool     `cfg:"enforce_permission_model" reg:"EnforcePermissionModel" default:"false" help:"When true, the shim prepends Node's permission-model flag (--permission or --experimental-permission by version) so each node.exe starts in default-deny lockdown. Users must pass --allow-* at runtime. (shim-only)" hidden:"false"`
-	FreezeV8GlobalObjects          bool     `cfg:"freeze_v8_global_objects" reg:"FreezeV8GlobalObjects" default:"false" help:"When true, the shim prepends --frozen-intrinsics so built-in JavaScript prototypes cannot be modified. Adds measurable latency. (shim-only; Node.js 12+)" hidden:"false"`
-	DisableEvalAndStringExecution  bool     `cfg:"disable_eval_and_string_execution" reg:"DisableEvalAndStringExecution" default:"false" help:"When true, the shim prepends --disallow-code-generation-from-strings to block eval() and new Function(). (shim-only)" hidden:"false"`
-	Enabled                        bool     `cfg:"enabled" reg:"Enabled" default:"true" help:"Whether Node.js version management is enabled. This is automatically set when running 'nvm on' or 'nvm off'." hidden:"true"`
-	RuntimeACLDegraded             bool     `cfg:"runtime_acl_degraded" reg:"RuntimeACLDegraded" default:"false" help:"Install finished with Node.js storage that may still fail NVM4305 checks." hidden:"true"`
-	AllowToolInstall               bool     `cfg:"allow_tool_install" reg:"AllowToolInstall" default:"true" help:"Whether to allow installation of native tools (nvm install native-tools)." hidden:"true"`
-	DisableAnnouncements           bool     `cfg:"disable_announcements" reg:"DisableAnnouncements" default:"false" help:"Whether to disable project and release announcements. License expiry warnings still run." hidden:"false"`
-	PackageManagerMismatchAction   string   `cfg:"pm_mismatch_action" reg:"PackageManagerMismatchAction" default:"error" enum:"ignore,warn,error" help:"Action to take when a mismatch between npm and Node.js versions is detected during install or use: ignore, warn, or error."`
-	AccessToken                    string   `cfg:"access_token" reg:"AccessToken" hidden:"true" secret:"true"`
-	AccessKey                      string   `cfg:"access_key" reg:"AccessKey" hidden:"true" secret:"true" help:"Machine license key used to authenticate downloads from Author mirrors."`
+	Mode                          string   `cfg:"mode" reg:"OperatingMode" default:"shim" enum:"shim,link" help:"Specifies how Node.js commands and versions are managed, either through shim-based routing or direct junction/symlink linking."`
+	Root                          string   `cfg:"root" reg:"InstallRoot" default:"%LOCALAPPDATA%\\Author Software\\nvm\\installs" help:"Root directory where Node.js versions are installed."`
+	Proxy                         string   `cfg:"proxy" reg:"Proxy" help:"Proxy URL used to download assets." hidden:"true"`
+	ProxyAuth                     string   `cfg:"proxy_auth" reg:"ProxyAuth" help:"Authentication value for the proxy, such as username:password or Bearer <token>." hidden:"true"`
+	ProxyAuthType                 string   `cfg:"proxy_auth_type" reg:"ProxyAuthType" help:"Preferred proxy authentication type for the configured proxy." hidden:"true"`
+	NodeMirror                    []string `cfg:"node_mirror" reg:"MirrorNode" default:"https://nodejs.org/dist" help:"Mirror URL(s) for downloading Node.js. Accepts a comma-delimited list."`
+	NpmMirror                     []string `cfg:"npm_mirror" reg:"MirrorNpm" help:"Mirror URL(s) for downloading npm. Accepts a comma-delimited list." default:"https://registry.npmjs.org"`
+	CacheDownloads                bool     `cfg:"cache_downloads" reg:"CacheDownloads" default:"false" help:"Whether to cache downloaded files for offline use."`
+	ActiveVersion                 string   `cfg:"active_version" reg:"ActiveVersion"`
+	LastVersion                   string   `cfg:"last_version" reg:"PreviousActiveVersion" help:"The last active version before the current one. Used for 'nvm use last'." hidden:"true"`
+	AutoDetect                    []string `cfg:"auto_detect" reg:"AutoDetect" default:".nvmrc,.node-version,package.json" help:"Project files to inspect for version (shim-only)."` // comma-separated list of files to inspect for version
+	DefaultDetectFile             string   `cfg:"default_detect_file" reg:"DefaultDetectFile" default:".nvmrc" help:"The default file to write to when saving/pinning a version to a project."`
+	AutoUse                       bool     `cfg:"auto_use" reg:"AutoUse" default:"true" help:"Automatically switch to auto-detected version to run the specified scripts without modifying the system version (shim-only)."`
+	AutoInstall                   bool     `cfg:"auto_install" reg:"AutoInstall" default:"false" help:"Automatically install missing auto-detected version (node shim, proxy npm/npx/yarn/pnpm, pin)."`
+	AutoInstallPrompt             bool     `cfg:"auto_install_prompt" reg:"AutoInstallPrompt" default:"true" help:"Prompt before automatically installing missing auto-detected version (node shim, proxy, pin)."`
+	DisableUpgrade                bool     `cfg:"disable_upgrade" reg:"DisableUpgrade" default:"false" help:"Disable nvm upgrades." hidden:"true"`
+	AllowInsecureDownloads        bool     `cfg:"allow_insecure_downloads" reg:"AllowInsecureDownloads" default:"false" help:"Allow expired/invalid SSL certificates when downloading assets." hidden:"false"`
+	AllowDownloadCacheRemoval     bool     `cfg:"allow_download_cache_removal" reg:"AllowDownloadCacheDelete" default:"true" help:"Allow removing cached downloads."`
+	AutoInstallModuleList         []string `cfg:"auto_installed_modules" reg:"AutoInstallModuleList" default:"" help:"Comma-delimited list of global npm modules to automatically install with new Node.js versions."`
+	AllowRootDirChange            bool     `cfg:"allow_root_dir_change" reg:"AllowRootDirChange" default:"true" help:"Allow changing the install root directory." hidden:"true"`
+	LocalInstallDir               string   `cfg:"local_dir" reg:"LocalInstallDir" help:"An alternative directory for installing Node.js versions. This overrides the cache." hidden:"true"`
+	LocalInstallOnly              bool     `cfg:"local_install_only" reg:"LocalInstallOnly" default:"false" help:"Only install Node.js versions from the local install directory." hidden:"true"`
+	AirGapped                     bool     `cfg:"air_gapped" reg:"AirGapped" default:"false" help:"Skip live JWKS; verify AccessToken against the COSE-signed offline JWKS store only." hidden:"true"`
+	NewsFeedURL                   string   `cfg:"news_feed_url" reg:"NewsFeedURL" default:"https://updates.nvm-windows.com/news" help:"URL for fetching news entries." hidden:"true"`
+	ReleaseFeedURL                string   `cfg:"release_feed_url" reg:"ReleaseFeedURL" default:"https://updates.nvm-windows.com/releases" help:"URL for fetching release entries." hidden:"true"`
+	LastUpdateCheck               string   `cfg:"last_update_check" reg:"LastUpdateCheck" help:"The last time updates were checked." hidden:"true"`
+	LastNewsCheck                 string   `cfg:"last_news_check" reg:"LastNewsCheck" help:"The last time news was checked." hidden:"true"`
+	LastSyncCheck                 string   `cfg:"last_sync_check" reg:"LastSyncCheck" help:"The last time sync app was updated." hidden:"true"`
+	LastLicenseNotice             string   `cfg:"last_license_notice" reg:"LastLicenseNotice" help:"Dedupe key for the last license expiry desktop notice." hidden:"true"`
+	LastLicenseVerifiedAt         string   `cfg:"last_license_verified_at" reg:"LastLicenseVerifiedAt" help:"RFC3339 UTC of last successful online AccessToken verification." hidden:"true"`
+	LastLicenseVerifyAttemptAt    string   `cfg:"last_license_verify_attempt_at" reg:"LastLicenseVerifyAttemptAt" help:"RFC3339 UTC of last online AccessToken verification attempt." hidden:"true"`
+	LastLicenseVerifyNotice       string   `cfg:"last_license_verify_notice" reg:"LastLicenseVerifyNotice" help:"Dedupe key for license revalidation warning toasts." hidden:"true"`
+	Aliases                       []string `cfg:"aliases" reg:"Aliases" default:"" help:"Comma-delimited list of version aliases in the format alias=version." hidden:"true"`
+	AllowedSigners                []string `cfg:"allowed_signers" reg:"AllowedSigners" help:"Comma-delimited signer organization names (O=) allowed after Authenticode chain verification. Use to restrict vendors (for example OpenJS Foundation vs NodeSource)." hidden:"true"`
+	AllowedThumbprints            []string `cfg:"allowed_thumbprints" reg:"AllowedThumbprints" help:"Optional comma-delimited SHA-1 Authenticode leaf thumbprints (hex). When set, node.exe must match one pin after org allowlist. Empty disables pinning." hidden:"true"`
+	TrustedModules                []string `cfg:"trusted_modules" reg:"TrustedModules" help:"Trust firewall: modules allowed to auto-reshim after self-update. NOT/! negation; empty defaults to NOT ALL plus npm, npx, yarn, yarnpkg, corepack, and pnpm. May include an HTTPS policy URL; local entries are checked first and only untrusted modules are POSTed to the URL." hidden:"true"`
+	UntrustedModuleHandlerAction  string   `cfg:"untrusted_module_handler_action" reg:"UntrustedModuleHandlerAction" default:"prompt" enum:"deny,prompt,allow" help:"Action when a global module changes without TrustedModules hit: prompt (default), allow (auto-reshim + quiet toast), or deny." hidden:"false"`
+	ApprovedModules               []string `cfg:"approved_modules" reg:"ApprovedModules" help:"Module firewall allow list for local installs. Empty defaults to ALL. May be a single HTTPS policy URL." hidden:"true"`
+	ApprovedGlobalModules         []string `cfg:"approved_global_modules" reg:"ApprovedGlobalModules" help:"Module firewall allow list for global installs. Empty defaults to ALL. May be a single HTTPS policy URL." hidden:"true"`
+	FirewallHTTPTimeoutSeconds    int      `cfg:"firewall_http_timeout_seconds" reg:"FirewallHTTPTimeoutSeconds" default:"3" help:"Timeout seconds for HTTPS firewall policy URL POSTs." hidden:"true"`
+	FirewallSkipLockfile          bool     `cfg:"firewall_skip_lockfile" reg:"FirewallSkipLockfile" default:"false" help:"When true, skip package-lock.json for module firewall; use package.json only. Default false (use lockfile when present)." hidden:"true"`
+	TrustedFirewallSigners        []string `cfg:"trusted_firewall_signers" reg:"TrustedFirewallSigners" help:"Optional TLS certificate organization allowlist for HTTPS firewall policy URLs." hidden:"true"`
+	TrustedFirewallThumbprint     []string `cfg:"trusted_firewall_thumbprint" reg:"TrustedFirewallThumbprint" help:"Optional SHA-1 leaf thumbprint pins for HTTPS firewall policy URLs." hidden:"true"`
+	AuthenticodeRevocation        string   `cfg:"authenticode_revocation" reg:"AuthenticodeRevocation" default:"online" enum:"online,cached,disabled" help:"Certificate revocation mode for Authenticode. Seed paths (install/use/sign) honor this; shim runtime never uses online (clamped to cached) so warm launches stay fast. AirGapped forces cached when online would apply." hidden:"true"`
+	LogExecutions                 bool     `cfg:"log_executions" reg:"LogExecutions" default:"false" help:"Whether to log every Node.js invocation (ex: node file.js). (shim-only)" hidden:"false"`
+	EnforcePermissionModel        bool     `cfg:"enforce_permission_model" reg:"EnforcePermissionModel" default:"false" help:"When true, the shim prepends Node's permission-model flag (--permission or --experimental-permission by version) so each node.exe starts in default-deny lockdown. Users must pass --allow-* at runtime. (shim-only)" hidden:"false"`
+	FreezeV8GlobalObjects         bool     `cfg:"freeze_v8_global_objects" reg:"FreezeV8GlobalObjects" default:"false" help:"When true, the shim prepends --frozen-intrinsics so built-in JavaScript prototypes cannot be modified. Adds measurable latency. (shim-only; Node.js 12+)" hidden:"false"`
+	DisableEvalAndStringExecution bool     `cfg:"disable_eval_and_string_execution" reg:"DisableEvalAndStringExecution" default:"false" help:"When true, the shim prepends --disallow-code-generation-from-strings to block eval() and new Function(). (shim-only)" hidden:"false"`
+	Enabled                       bool     `cfg:"enabled" reg:"Enabled" default:"true" help:"Whether Node.js version management is enabled. This is automatically set when running 'nvm on' or 'nvm off'." hidden:"true"`
+	RuntimeACLDegraded            bool     `cfg:"runtime_acl_degraded" reg:"RuntimeACLDegraded" default:"false" help:"Install finished with Node.js storage that may still fail NVM4305 checks." hidden:"true"`
+	AllowToolInstall              bool     `cfg:"allow_tool_install" reg:"AllowToolInstall" default:"true" help:"Whether to allow installation of native tools (nvm install native-tools)." hidden:"true"`
+	DisableAnnouncements          bool     `cfg:"disable_announcements" reg:"DisableAnnouncements" default:"false" help:"Whether to disable project and release announcements. License expiry warnings still run." hidden:"false"`
+	PackageManagerMismatchAction  string   `cfg:"pm_mismatch_action" reg:"PackageManagerMismatchAction" default:"error" enum:"ignore,warn,error" help:"Action to take when a mismatch between npm and Node.js versions is detected during install or use: ignore, warn, or error."`
+	AccessToken                   string   `cfg:"access_token" reg:"AccessToken" hidden:"true" secret:"true"`
+	AccessKey                     string   `cfg:"access_key" reg:"AccessKey" hidden:"true" secret:"true" help:"Machine license key used to authenticate downloads from Author mirrors."`
 }
