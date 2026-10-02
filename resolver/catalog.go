@@ -22,9 +22,10 @@ const (
 )
 
 var (
-	catalogMemMu   sync.Mutex
-	catalogMemBody []byte
-	catalogMemAt   time.Time
+	catalogMemMu      sync.Mutex
+	catalogMemBody    []byte
+	catalogMemAt      time.Time
+	catalogMemMirrors string
 )
 
 func List(majors ...string) ([][]string, error) {
@@ -38,28 +39,28 @@ func List(majors ...string) ([][]string, error) {
 		return nil, fmt.Errorf("no Node.js mirrors configured")
 	}
 
-	// Process-local memo: avoid repeat disk/network within TTL.
-	if body, ok := catalogMemory(); ok {
+	// Process-local memo: avoid repeat disk/network within TTL for the same mirrors.
+	if body, ok := catalogMemory(mirrors); ok {
 		return parseIndexTab(body, filter), nil
 	}
 
 	// Cache-first: newest on-disk index.tab across configured mirrors.
 	staleBody, staleMod, hasStale := loadNewestCachedIndex(mirrors)
 	if hasStale && time.Since(staleMod) < catalogCacheTTL {
-		setCatalogMemory(staleBody)
+		setCatalogMemory(mirrors, staleBody)
 		return parseIndexTab(staleBody, filter), nil
 	}
 
 	body, err := fetchIndexTab(mirrors)
 	if err != nil {
 		if hasStale {
-			setCatalogMemory(staleBody)
+			setCatalogMemory(mirrors, staleBody)
 			return parseIndexTab(staleBody, filter), nil
 		}
 		return nil, err
 	}
 
-	setCatalogMemory(body)
+	setCatalogMemory(mirrors, body)
 	return parseIndexTab(body, filter), nil
 }
 
@@ -78,10 +79,14 @@ func majorFilter(majors ...string) (map[string]bool, error) {
 	return filter, nil
 }
 
-func catalogMemory() ([]byte, bool) {
+func mirrorCacheKey(mirrors []string) string {
+	return strings.Join(mirrors, "\n")
+}
+
+func catalogMemory(mirrors []string) ([]byte, bool) {
 	catalogMemMu.Lock()
 	defer catalogMemMu.Unlock()
-	if len(catalogMemBody) == 0 || time.Since(catalogMemAt) >= catalogCacheTTL {
+	if catalogMemMirrors != mirrorCacheKey(mirrors) || len(catalogMemBody) == 0 || time.Since(catalogMemAt) >= catalogCacheTTL {
 		return nil, false
 	}
 	out := make([]byte, len(catalogMemBody))
@@ -89,9 +94,10 @@ func catalogMemory() ([]byte, bool) {
 	return out, true
 }
 
-func setCatalogMemory(body []byte) {
+func setCatalogMemory(mirrors []string, body []byte) {
 	catalogMemMu.Lock()
 	defer catalogMemMu.Unlock()
+	catalogMemMirrors = mirrorCacheKey(mirrors)
 	catalogMemBody = append([]byte(nil), body...)
 	catalogMemAt = time.Now()
 }
