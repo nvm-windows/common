@@ -52,6 +52,43 @@ func TestApplyRelaxCustomDoesNotShrinkDownload(t *testing.T) {
 	}
 }
 
+func TestApplyStepDeadlinesOverridesOneStep(t *testing.T) {
+	got := ApplyStepDeadlines(sampleBudgets(), StepDeadlines{CatalogMirrorMs: 3000})
+	if !got.Verbose {
+		t.Fatal("expected verbose")
+	}
+	if got.CatalogMirror.Milliseconds != 3000 || got.CatalogMirror.Source != SourceCommandFlag {
+		t.Fatalf("mirror = %+v", got.CatalogMirror)
+	}
+	if got.Catalog.Milliseconds != 3000 || got.Catalog.Source != SourceDefault {
+		t.Fatalf("catalog = %+v", got.Catalog)
+	}
+	if got.Reachability.Milliseconds != 1500 || got.Reachability.Source != SourceDefault {
+		t.Fatalf("reachability = %+v", got.Reachability)
+	}
+	if got.Download.Milliseconds != 30000 || got.Download.Source != SourceDefault {
+		t.Fatalf("download = %+v", got.Download)
+	}
+}
+
+func TestApplyStepDeadlinesWinsOverRelax(t *testing.T) {
+	relaxed := ApplyRelax(sampleBudgets(), RelaxDeadlines{Active: true})
+	got := ApplyStepDeadlines(relaxed, StepDeadlines{CatalogMirrorMs: 5000})
+	if got.Catalog.Milliseconds != 9000 || got.Reachability.Milliseconds != 4500 || got.Download.Milliseconds != 90000 {
+		t.Fatalf("relaxed steps = %+v", got)
+	}
+	if got.CatalogMirror.Milliseconds != 5000 || got.CatalogMirror.Source != SourceCommandFlag {
+		t.Fatalf("mirror = %+v", got.CatalogMirror)
+	}
+}
+
+func TestApplyStepDeadlinesCanShrinkDownload(t *testing.T) {
+	got := ApplyStepDeadlines(sampleBudgets(), StepDeadlines{DownloadMs: 5000})
+	if got.Download.Milliseconds != 5000 || got.Download.Source != SourceCommandFlag {
+		t.Fatalf("download = %+v", got.Download)
+	}
+}
+
 func TestSuggestedTimeoutMs(t *testing.T) {
 	if got := SuggestedTimeoutMs(2000*time.Millisecond, DefaultTimeoutCatalogMs); got != 4000 {
 		t.Fatalf("2000ms average -> %d, want 4000", got)
