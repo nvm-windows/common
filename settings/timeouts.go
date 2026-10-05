@@ -80,9 +80,24 @@ func UseNetworkBudgets(b NetworkBudgets) {
 	budgetMu.Unlock()
 }
 
+// StepDeadlines overrides individual deadlines for one command.
+// A value of 0 leaves that step unchanged.
+type StepDeadlines struct {
+	CatalogMs       int
+	CatalogMirrorMs int
+	ReachabilityMs  int
+	DownloadMs      int
+}
+
 // UseRelax resolves registry deadlines, applies the flag, and stores them.
 func UseRelax(relax RelaxDeadlines) NetworkBudgets {
-	b := ResolveNetworkBudgets(relax)
+	return UseCommandDeadlines(relax, StepDeadlines{})
+}
+
+// UseCommandDeadlines resolves registry deadlines, applies relax, then per-step flags.
+// A per-step value replaces only that step and wins over relax.
+func UseCommandDeadlines(relax RelaxDeadlines, steps StepDeadlines) NetworkBudgets {
+	b := ApplyStepDeadlines(ResolveNetworkBudgets(relax), steps)
 	UseNetworkBudgets(b)
 	return b
 }
@@ -160,6 +175,23 @@ func ApplyRelax(b NetworkBudgets, relax RelaxDeadlines) NetworkBudgets {
 	b.CatalogMirror.Source = SourceCommandFlag
 	b.Reachability.Source = SourceCommandFlag
 	b.Download.Source = SourceCommandFlag
+	return b
+}
+
+// ApplyStepDeadlines replaces only the steps whose millisecond value is positive.
+func ApplyStepDeadlines(b NetworkBudgets, steps StepDeadlines) NetworkBudgets {
+	set := func(budget *Budget, ms int) {
+		if ms <= 0 {
+			return
+		}
+		budget.Milliseconds = ms
+		budget.Source = SourceCommandFlag
+		b.Verbose = true
+	}
+	set(&b.Catalog, steps.CatalogMs)
+	set(&b.CatalogMirror, steps.CatalogMirrorMs)
+	set(&b.Reachability, steps.ReachabilityMs)
+	set(&b.Download, steps.DownloadMs)
 	return b
 }
 
