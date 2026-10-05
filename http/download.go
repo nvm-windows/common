@@ -20,8 +20,8 @@ type DownloadConfig struct {
 	Destination   string
 	AllowInsecure bool
 	Headers       map[string]string
-	// Timeout bounds the entire download (dial + headers + body). Zero uses the
-	// default client timeout (30s). Catalog fetches should set a short value.
+	// Timeout bounds the entire download (dial + headers + body). Zero uses
+	// TimeoutDownloadMs. Catalog fetches should set a shorter value.
 	Timeout time.Duration
 	// Context cancels the download. When both Context and Timeout are set,
 	// the effective deadline is the earlier of the two.
@@ -146,7 +146,7 @@ func downloadInternal(ctx context.Context, url string, cfg DownloadConfig, progr
 		}
 	}
 
-	clientTimeout := 30 * time.Second
+	clientTimeout := defaultClientTimeout()
 	if cfg.Timeout > 0 {
 		clientTimeout = cfg.Timeout
 	}

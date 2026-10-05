@@ -1,36 +1,53 @@
 package resolver
 
 import (
+	"fmt"
+	"strings"
 	"testing"
 	"time"
 )
 
 func TestPerMirrorBudgetFairShare(t *testing.T) {
-	// Three mirrors left, 3s remaining → each gets 1s fair share, capped at 800ms.
-	got := perMirrorBudget(3, catalogOverallBudget)
-	if got != catalogPerMirrorCap {
-		t.Fatalf("perMirrorBudget(3, 3s) = %v, want %v", got, catalogPerMirrorCap)
+	got := perMirrorBudget(3, 3*time.Second, 800*time.Millisecond)
+	if got != 800*time.Millisecond {
+		t.Fatalf("perMirrorBudget(3, 3s, 800ms) = %v, want 800ms", got)
 	}
 }
 
-func TestPerMirrorBudgetRespectsRemaining(t *testing.T) {
-	// fair share 150ms < floor → floor 200ms, still under remaining 300ms.
-	got := perMirrorBudget(2, 300*time.Millisecond)
-	if got != catalogPerMirrorFloor {
-		t.Fatalf("perMirrorBudget = %v, want floor %v", got, catalogPerMirrorFloor)
+func TestPerMirrorBudgetFairShareWithoutFloor(t *testing.T) {
+	got := perMirrorBudget(2, 300*time.Millisecond, 800*time.Millisecond)
+	if got != 150*time.Millisecond {
+		t.Fatalf("perMirrorBudget = %v, want 150ms", got)
 	}
 }
 
 func TestPerMirrorBudgetClampsToRemaining(t *testing.T) {
-	got := perMirrorBudget(1, 100*time.Millisecond)
+	got := perMirrorBudget(1, 100*time.Millisecond, 800*time.Millisecond)
 	if got != 100*time.Millisecond {
 		t.Fatalf("perMirrorBudget = %v, want 100ms", got)
 	}
 }
 
 func TestPerMirrorBudgetZeroRemaining(t *testing.T) {
-	if got := perMirrorBudget(5, 0); got != 0 {
+	if got := perMirrorBudget(5, 0, 800*time.Millisecond); got != 0 {
 		t.Fatalf("perMirrorBudget = %v, want 0", got)
+	}
+}
+
+func TestDeadlineErrorNamesAppliedBudget(t *testing.T) {
+	err := &DeadlineError{
+		Phase: "mirror", URL: "https://nodejs.org/dist/index.tab",
+		CatalogMs: 3000, CatalogSource: "default",
+		MirrorMs: 800, MirrorSource: "default",
+		Err: fmt.Errorf("context deadline exceeded"),
+	}
+	msg := err.Error()
+	if !strings.Contains(msg, "TimeoutCatalogMirrorMs 800ms, default") || !strings.Contains(msg, "TimeoutCatalogMs 3000ms, default") {
+		t.Fatalf("message = %s", msg)
+	}
+	err.Verbose = true
+	if !strings.Contains(err.Error(), "phase=mirror url=https://nodejs.org/dist/index.tab") {
+		t.Fatalf("verbose = %s", err.Error())
 	}
 }
 

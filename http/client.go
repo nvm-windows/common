@@ -23,14 +23,23 @@ type Client struct {
 }
 
 func new(allowInsecure ...bool) *Client {
-	return NewClient(30*time.Second, allowInsecure...)
+	return NewClient(0, allowInsecure...)
+}
+
+func defaultClientTimeout() time.Duration {
+	d := settings.ActiveNetworkBudgets().Download.Duration()
+	if d <= 0 {
+		d = time.Duration(settings.DefaultTimeoutDownloadMs) * time.Millisecond
+	}
+	return d
 }
 
 // NewClient returns an HTTP client that injects Author mirror auth headers
 // (Bearer access token) for *.author.io hosts.
+// A timeout of zero uses TimeoutDownloadMs.
 func NewClient(timeout time.Duration, allowInsecure ...bool) *Client {
 	if timeout <= 0 {
-		timeout = 30 * time.Second
+		timeout = defaultClientTimeout()
 	}
 
 	transport := gohttp.DefaultTransport.(*gohttp.Transport).Clone()
@@ -97,12 +106,12 @@ func (c *Client) Request(req *gohttp.Request) (*gohttp.Response, error) {
 // h1only returns a client that forces HTTP/1.1, used as a fallback when
 // HTTP/2 stream errors occur (common in elevated/admin Windows contexts).
 func h1only(allowInsecure ...bool) *Client {
-	return h1onlyWithTimeout(30*time.Second, allowInsecure...)
+	return h1onlyWithTimeout(0, allowInsecure...)
 }
 
 func h1onlyWithTimeout(timeout time.Duration, allowInsecure ...bool) *Client {
 	if timeout <= 0 {
-		timeout = 30 * time.Second
+		timeout = defaultClientTimeout()
 	}
 	transport := gohttp.DefaultTransport.(*gohttp.Transport).Clone()
 	transport.Proxy = proxyURLForRequest
