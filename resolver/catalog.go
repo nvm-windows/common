@@ -11,15 +11,13 @@ import (
 )
 
 const (
-	// catalogOverallBudget caps all mirror attempts for one index.tab resolve.
-	catalogOverallBudget = 3 * time.Second
-	// catalogPerMirrorCap is the max time any single mirror may consume.
-	catalogPerMirrorCap = 800 * time.Millisecond
-	// catalogPerMirrorFloor keeps tiny per-mirror slices usable under fair share.
-	catalogPerMirrorFloor = 200 * time.Millisecond
 	// catalogCacheTTL: fresher than this → serve disk/memory cache with no network.
 	catalogCacheTTL = time.Hour
 )
+
+// OnDeadline receives a catalog or mirror deadline after every mirror attempt failed.
+// The CLI sets this so certified structured logging can emit NVM4501.
+var OnDeadline func(phase, url string, budgetMs int, source string)
 
 var (
 	catalogMemMu      sync.Mutex
@@ -118,21 +116,17 @@ func loadNewestCachedIndex(mirrors []string) (body []byte, mod time.Time, ok boo
 	return body, mod, ok
 }
 
-func perMirrorBudget(mirrorsLeft int, remaining time.Duration) time.Duration {
+func perMirrorBudget(mirrorsLeft int, remaining, cap time.Duration) time.Duration {
 	if remaining <= 0 || mirrorsLeft <= 0 {
 		return 0
 	}
+	if cap <= 0 {
+		cap = remaining
+	}
 	fair := remaining / time.Duration(mirrorsLeft)
-	budget := catalogPerMirrorCap
+	budget := cap
 	if fair < budget {
 		budget = fair
-	}
-	if budget < catalogPerMirrorFloor {
-		if catalogPerMirrorFloor <= remaining {
-			budget = catalogPerMirrorFloor
-		} else {
-			budget = remaining
-		}
 	}
 	if budget > remaining {
 		budget = remaining
@@ -141,8 +135,13 @@ func perMirrorBudget(mirrorsLeft int, remaining time.Duration) time.Duration {
 }
 
 func fetchIndexTab(mirrors []string) ([]byte, error) {
-	deadline := time.Now().Add(catalogOverallBudget)
+	budgets := settings.ActiveNetworkBudgets()
+	overall := budgets.Catalog.Duration()
+	cap := budgets.CatalogMirror.Duration()
+	deadline := time.Now().Add(overall)
 	var lastErr error
+	var lastURL string
+	appliedMirror := cap
 
 	for i, mirror := range mirrors {
 		remaining := time.Until(deadline)
@@ -150,12 +149,14 @@ func fetchIndexTab(mirrors []string) ([]byte, error) {
 			break
 		}
 
-		mirrorBudget := perMirrorBudget(len(mirrors)-i, remaining)
+		mirrorBudget := perMirrorBudget(len(mirrors)-i, remaining, cap)
 		if mirrorBudget <= 0 {
 			break
 		}
+		appliedMirror = mirrorBudget
 
 		url := strings.TrimRight(strings.TrimSpace(mirror), "/") + "/index.tab"
+		lastURL = url
 		job, err := http.Download(url, http.DownloadConfig{
 			Cache:   true,
 			Timeout: mirrorBudget,
@@ -178,10 +179,54 @@ func fetchIndexTab(mirrors []string) ([]byte, error) {
 		return res.Content, nil
 	}
 
-	if lastErr != nil {
-		return nil, fmt.Errorf("failed to fetch version manifests from any server (budget %s): %v", catalogOverallBudget, lastErr)
+	deadlineErr := &DeadlineError{
+		Phase:         "mirror",
+		URL:           lastURL,
+		CatalogMs:     budgets.Catalog.Milliseconds,
+		CatalogSource: budgets.Catalog.Source,
+		MirrorMs:      int(appliedMirror / time.Millisecond),
+		MirrorSource:  budgets.CatalogMirror.Source,
+		Verbose:       budgets.Verbose,
+		Err:           lastErr,
 	}
-	return nil, fmt.Errorf("failed to fetch version manifests from any server: %s", strings.Join(mirrors, ", "))
+	if deadlineErr.MirrorMs <= 0 {
+		deadlineErr.Phase = "catalog"
+		deadlineErr.MirrorMs = budgets.CatalogMirror.Milliseconds
+	}
+	if OnDeadline != nil {
+		OnDeadline(deadlineErr.Phase, deadlineErr.URL, deadlineErr.MirrorMs, deadlineErr.MirrorSource)
+	}
+	return nil, deadlineErr
+}
+
+// DeadlineError is a catalog fetch that used up TimeoutCatalogMs or TimeoutCatalogMirrorMs.
+type DeadlineError struct {
+	Phase         string
+	URL           string
+	CatalogMs     int
+	CatalogSource string
+	MirrorMs      int
+	MirrorSource  string
+	Verbose       bool
+	Err           error
+}
+
+func (e *DeadlineError) Error() string {
+	msg := fmt.Sprintf(
+		"failed to fetch version manifests from any server (TimeoutCatalogMs %dms, %s; TimeoutCatalogMirrorMs %dms, %s)",
+		e.CatalogMs, e.CatalogSource, e.MirrorMs, e.MirrorSource,
+	)
+	if e.Verbose {
+		msg = fmt.Sprintf("%s phase=%s url=%s", msg, e.Phase, e.URL)
+	}
+	if e.Err != nil {
+		return msg + ": " + e.Err.Error()
+	}
+	return msg
+}
+
+func (e *DeadlineError) Unwrap() error {
+	return e.Err
 }
 
 func parseIndexTab(content []byte, filter map[string]bool) [][]string {
