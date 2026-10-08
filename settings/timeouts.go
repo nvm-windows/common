@@ -4,6 +4,7 @@ import (
 	prefs "common/preferences"
 	"common/registry"
 	"fmt"
+	"math"
 	"strconv"
 	"strings"
 	"sync"
@@ -15,6 +16,12 @@ const (
 	DefaultTimeoutCatalogMirrorMs = 800
 	DefaultTimeoutReachabilityMs  = 1500
 	DefaultTimeoutDownloadMs      = 30000
+
+	// Auto-deadline estimand: 95th percentile of request latency.
+	// Confidence 95%. Method: sample maximum (order statistic).
+	// n = ceil(ln(1-confidence) / ln(percentile)) = 59.
+	autoDeadlineConfidence = 0.95
+	autoDeadlinePercentile = 0.95
 
 	SourceMachinePolicy   = "machine policy"
 	SourceMachineSettings = "machine settings"
@@ -241,36 +248,45 @@ func HKCUWriteChangesEffective(cfgName string) (bool, string) {
 	return true, ""
 }
 
-// SuggestedTimeoutMs is twice the measured average, rounded up, never below floorMs.
-func SuggestedTimeoutMs(average time.Duration, floorMs int) int {
-	if average < 0 {
-		average = 0
+// AutoDeadlineAttempts is how many attempts make the sample maximum a 95% upper bound on the 95th percentile.
+func AutoDeadlineAttempts() int {
+	n := math.Ceil(math.Log(1-autoDeadlineConfidence) / math.Log(autoDeadlinePercentile))
+	if n < 1 {
+		return 1
 	}
-	doubled := average * 2
-	ms := int((doubled + time.Millisecond - 1) / time.Millisecond)
+	return int(n)
+}
+
+// SuggestedDeadlineMs rounds the sample maximum up to milliseconds, never below floorMs.
+// That maximum is the auto-deadline estimate after AutoDeadlineAttempts samples.
+func SuggestedDeadlineMs(maximum time.Duration, floorMs int) int {
+	if maximum < 0 {
+		maximum = 0
+	}
+	ms := int((maximum + time.Millisecond - 1) / time.Millisecond)
 	if ms < floorMs {
 		return floorMs
 	}
 	return ms
 }
 
-// SaveAutoDeadlines writes HKCU millisecond values from measured averages.
-// reachAvg feeds TimeoutReachabilityMs. manifestAvg feeds the catalog and download keys.
-// Notes describe each write. A policy block is reported and skipped.
-func SaveAutoDeadlines(reachAvg, manifestAvg time.Duration) []string {
+// SaveAutoDeadlines writes HKCU millisecond values from sample maxima.
+// reachMax feeds TimeoutReachabilityMs. manifestMax feeds the catalog, per-mirror, and download keys.
+// Each saved value is at least that setting's default. Notes describe each write. A policy block is reported and skipped.
+func SaveAutoDeadlines(reachMax, manifestMax time.Duration) []string {
 	items := []struct {
 		name  string
-		avg   time.Duration
+		max   time.Duration
 		floor int
 	}{
-		{"timeout_reachability_ms", reachAvg, DefaultTimeoutReachabilityMs},
-		{"timeout_catalog_ms", manifestAvg, DefaultTimeoutCatalogMs},
-		{"timeout_catalog_mirror_ms", manifestAvg, DefaultTimeoutCatalogMirrorMs},
-		{"timeout_download_ms", manifestAvg, DefaultTimeoutDownloadMs},
+		{"timeout_reachability_ms", reachMax, DefaultTimeoutReachabilityMs},
+		{"timeout_catalog_ms", manifestMax, DefaultTimeoutCatalogMs},
+		{"timeout_catalog_mirror_ms", manifestMax, DefaultTimeoutCatalogMirrorMs},
+		{"timeout_download_ms", manifestMax, DefaultTimeoutDownloadMs},
 	}
 	notes := make([]string, 0, len(items))
 	for _, item := range items {
-		ms := SuggestedTimeoutMs(item.avg, item.floor)
+		ms := SuggestedDeadlineMs(item.max, item.floor)
 		regName := key(item.name)
 		if ok, src := HKCUWriteChangesEffective(item.name); !ok {
 			notes = append(notes, fmt.Sprintf("%s is enforced by %s; saving your settings will not change the effective deadline", regName, src))

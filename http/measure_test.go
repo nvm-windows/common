@@ -12,16 +12,25 @@ func TestProbeAverage(t *testing.T) {
 	}
 }
 
-func TestSlowestAverageSkipsFailures(t *testing.T) {
+func TestProbeRounds(t *testing.T) {
+	if got := probeRounds(59); got != 10 {
+		t.Fatalf("59 attempts = %d rounds, want 10", got)
+	}
+	if got := probeRounds(3); got != 1 {
+		t.Fatalf("3 attempts = %d rounds, want 1", got)
+	}
+}
+
+func TestSlowestMaxSkipsFailures(t *testing.T) {
 	probes := []ProbeResult{
 		{Phase: "reachability", Samples: []time.Duration{100 * time.Millisecond}},
 		{Phase: "reachability", Samples: []time.Duration{400 * time.Millisecond}, Err: errSample},
 		{Phase: "catalog", Samples: []time.Duration{250 * time.Millisecond, 350 * time.Millisecond}},
 	}
-	if got := slowestAverage(probes, "reachability"); got != 100*time.Millisecond {
+	if got := slowestMax(probes, "reachability"); got != 100*time.Millisecond {
 		t.Fatalf("reachability = %s", got)
 	}
-	if got := slowestAverage(probes, "catalog"); got != 300*time.Millisecond {
+	if got := slowestMax(probes, "catalog"); got != 350*time.Millisecond {
 		t.Fatalf("catalog = %s", got)
 	}
 }

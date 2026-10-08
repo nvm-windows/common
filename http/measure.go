@@ -5,8 +5,14 @@ import (
 	"fmt"
 	"io"
 	"strings"
+	"sync"
 	"time"
 )
+
+// probeParallelism is how many attempts run at once.
+// Each attempt has its own TCP connection, so six do not queue on one socket.
+// 59 attempts then finish in about 10 rounds.
+const probeParallelism = 6
 
 // ProbeResult is one URL measured count times.
 type ProbeResult struct {
@@ -52,6 +58,7 @@ func extreme(samples []time.Duration, min bool) time.Duration {
 }
 
 // Measurement is a doctor deadline probe of the configured mirrors.
+// Reach and Manifest are the slowest successful sample in that phase.
 type Measurement struct {
 	Probes   []ProbeResult
 	Failed   bool
@@ -59,9 +66,13 @@ type Measurement struct {
 	Manifest time.Duration
 }
 
+// ProbeProgress reports one finished round. err is set when an attempt in that round failed.
+type ProbeProgress func(phase, url string, round, rounds int, err error)
+
 // MeasureDownloadSources times HEAD index.tab, npm /-/ping, and GET index.tab.
 // Each attempt uses budget. A failed attempt marks the measurement failed.
-func MeasureDownloadSources(count int, budget time.Duration) Measurement {
+// progress may be nil. It is called after each round of attempts, and when an attempt fails.
+func MeasureDownloadSources(count int, budget time.Duration, progress ProbeProgress) Measurement {
 	if count < 1 {
 		count = 3
 	}
@@ -76,18 +87,18 @@ func MeasureDownloadSources(count int, budget time.Duration) Measurement {
 			continue
 		}
 		index := base + "/index.tab"
-		out.Probes = append(out.Probes, probeMany("reachability", "HEAD", index, count, budget))
-		out.Probes = append(out.Probes, probeMany("catalog", "GET", index, count, budget))
+		out.Probes = append(out.Probes, probeMany("reachability", "HEAD", index, count, budget, progress))
+		out.Probes = append(out.Probes, probeMany("catalog", "GET", index, count, budget, progress))
 	}
 	for _, mirror := range cfg.NpmMirror {
 		base := strings.TrimRight(strings.TrimSpace(mirror), "/")
 		if base == "" {
 			continue
 		}
-		out.Probes = append(out.Probes, probeMany("reachability", "GET", base+"/-/ping", count, budget))
+		out.Probes = append(out.Probes, probeMany("reachability", "GET", base+"/-/ping", count, budget, progress))
 	}
-	out.Reach = slowestAverage(out.Probes, "reachability")
-	out.Manifest = slowestAverage(out.Probes, "catalog")
+	out.Reach = slowestMax(out.Probes, "reachability")
+	out.Manifest = slowestMax(out.Probes, "catalog")
 	for _, p := range out.Probes {
 		if p.Err != nil {
 			out.Failed = true
@@ -97,29 +108,72 @@ func MeasureDownloadSources(count int, budget time.Duration) Measurement {
 	return out
 }
 
-func slowestAverage(probes []ProbeResult, phase string) time.Duration {
+func slowestMax(probes []ProbeResult, phase string) time.Duration {
 	var slowest time.Duration
 	for _, p := range probes {
 		if p.Phase != phase || p.Err != nil || len(p.Samples) == 0 {
 			continue
 		}
-		if avg := p.Average(); avg > slowest {
-			slowest = avg
+		if max := p.Max(); max > slowest {
+			slowest = max
 		}
 	}
 	return slowest
 }
 
-func probeMany(phase, method, url string, count int, budget time.Duration) ProbeResult {
-	result := ProbeResult{Phase: phase, URL: url}
-	client := NewClient(budget)
+func probeRounds(count int) int {
+	if count < 1 {
+		return 0
+	}
+	return (count + probeParallelism - 1) / probeParallelism
+}
+
+func probeMany(phase, method, url string, count int, budget time.Duration, progress ProbeProgress) ProbeResult {
+	result := ProbeResult{Phase: phase, URL: url, Samples: make([]time.Duration, count)}
+	client := newProbeClient(budget)
+	rounds := probeRounds(count)
+	var wg sync.WaitGroup
+	sem := make(chan struct{}, probeParallelism)
+	var mu sync.Mutex
+	var firstErr error
+	completed := 0
 	for i := 0; i < count; i++ {
-		elapsed, err := probeOnce(client, method, url)
-		if err != nil {
-			result.Err = err
-			return result
+		mu.Lock()
+		failed := firstErr != nil
+		mu.Unlock()
+		if failed {
+			break
 		}
-		result.Samples = append(result.Samples, elapsed)
+		sem <- struct{}{}
+		wg.Add(1)
+		go func(i int) {
+			defer wg.Done()
+			defer func() { <-sem }()
+			elapsed, err := probeOnce(client, method, url)
+			mu.Lock()
+			defer mu.Unlock()
+			completed++
+			round := (completed + probeParallelism - 1) / probeParallelism
+			waveDone := completed%probeParallelism == 0 || completed == count
+			if err != nil {
+				if firstErr == nil {
+					firstErr = err
+				}
+				if progress != nil {
+					progress(phase, url, round, rounds, err)
+				}
+				return
+			}
+			result.Samples[i] = elapsed
+			if progress != nil && waveDone && firstErr == nil {
+				progress(phase, url, round, rounds, nil)
+			}
+		}(i)
+	}
+	wg.Wait()
+	if firstErr != nil {
+		result.Err = firstErr
+		result.Samples = nil
 	}
 	return result
 }
