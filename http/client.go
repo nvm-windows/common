@@ -109,17 +109,36 @@ func h1only(allowInsecure ...bool) *Client {
 	return h1onlyWithTimeout(0, allowInsecure...)
 }
 
+// newProbeClient forces a new HTTP/1.1 connection per attempt.
+// HTTP/2 would multiplex every sample onto one TCP connection.
+// Keep-alive would reuse that connection across attempts.
+func newProbeClient(timeout time.Duration) *Client {
+	if timeout <= 0 {
+		timeout = defaultClientTimeout()
+	}
+	transport := gohttp.DefaultTransport.(*gohttp.Transport).Clone()
+	transport.Proxy = proxyURLForRequest
+	forceHTTP1(transport)
+	transport.DisableKeepAlives = true
+	transport.MaxConnsPerHost = probeParallelism
+	return &Client{
+		client: &gohttp.Client{
+			Timeout:   timeout,
+			Transport: proxy.WrapTransport(transport),
+		},
+	}
+}
+
 func h1onlyWithTimeout(timeout time.Duration, allowInsecure ...bool) *Client {
 	if timeout <= 0 {
 		timeout = defaultClientTimeout()
 	}
 	transport := gohttp.DefaultTransport.(*gohttp.Transport).Clone()
 	transport.Proxy = proxyURLForRequest
-	transport.ForceAttemptHTTP2 = false
-	transport.TLSNextProto = make(map[string]func(string, *tls.Conn) gohttp.RoundTripper)
 	if len(allowInsecure) > 0 && allowInsecure[0] {
 		transport.TLSClientConfig = &tls.Config{InsecureSkipVerify: true}
 	}
+	forceHTTP1(transport)
 
 	return &Client{
 		client: &gohttp.Client{
@@ -127,6 +146,18 @@ func h1onlyWithTimeout(timeout time.Duration, allowInsecure ...bool) *Client {
 			Transport: proxy.WrapTransport(transport),
 		},
 	}
+}
+
+// forceHTTP1 keeps the handshake on HTTP/1.1.
+// Cloning the default transport copies a TLS config that still advertises h2.
+// The server then speaks HTTP/2 and the HTTP/1 client reads a SETTINGS frame.
+func forceHTTP1(transport *gohttp.Transport) {
+	transport.ForceAttemptHTTP2 = false
+	transport.TLSNextProto = make(map[string]func(string, *tls.Conn) gohttp.RoundTripper)
+	if transport.TLSClientConfig == nil {
+		transport.TLSClientConfig = &tls.Config{}
+	}
+	transport.TLSClientConfig.NextProtos = []string{"http/1.1"}
 }
 
 func makeRequest(method, url string) (*gohttp.Request, error) {

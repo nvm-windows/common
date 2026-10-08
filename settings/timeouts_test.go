@@ -89,18 +89,24 @@ func TestApplyStepDeadlinesCanShrinkDownload(t *testing.T) {
 	}
 }
 
-func TestSuggestedTimeoutMs(t *testing.T) {
-	if got := SuggestedTimeoutMs(2000*time.Millisecond, DefaultTimeoutCatalogMs); got != 4000 {
-		t.Fatalf("2000ms average -> %d, want 4000", got)
+func TestAutoDeadlineAttempts(t *testing.T) {
+	if got := AutoDeadlineAttempts(); got != 59 {
+		t.Fatalf("attempts = %d, want 59", got)
 	}
-	if got := SuggestedTimeoutMs(200*time.Millisecond, DefaultTimeoutCatalogMs); got != DefaultTimeoutCatalogMs {
-		t.Fatalf("fast catalog -> %d, want default", got)
+}
+
+func TestSuggestedDeadlineMs(t *testing.T) {
+	if got := SuggestedDeadlineMs(1234*time.Millisecond, DefaultTimeoutCatalogMirrorMs); got != 1234 {
+		t.Fatalf("mirror = %d, want 1234", got)
 	}
-	if got := SuggestedTimeoutMs(200*time.Millisecond, DefaultTimeoutCatalogMirrorMs); got != DefaultTimeoutCatalogMirrorMs {
-		t.Fatalf("fast mirror -> %d, want default", got)
+	if got := SuggestedDeadlineMs(1234*time.Millisecond, DefaultTimeoutCatalogMs); got != DefaultTimeoutCatalogMs {
+		t.Fatalf("catalog = %d, want default", got)
 	}
-	if got := SuggestedTimeoutMs(200*time.Millisecond, DefaultTimeoutDownloadMs); got != DefaultTimeoutDownloadMs {
-		t.Fatalf("fast download -> %d, want default", got)
+	if got := SuggestedDeadlineMs(200*time.Millisecond, DefaultTimeoutDownloadMs); got != DefaultTimeoutDownloadMs {
+		t.Fatalf("download = %d, want default", got)
+	}
+	if got := SuggestedDeadlineMs(16297*time.Millisecond, DefaultTimeoutReachabilityMs); got != 16297 {
+		t.Fatalf("reachability = %d, want 16297", got)
 	}
 }
 
