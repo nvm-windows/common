@@ -8,6 +8,7 @@ import (
 )
 
 func TestPerMirrorBudgetFairShare(t *testing.T) {
+	// Three mirrors left, 3s remaining → each gets 1s fair share, capped at 800ms.
 	got := perMirrorBudget(3, 3*time.Second, 800*time.Millisecond)
 	if got != 800*time.Millisecond {
 		t.Fatalf("perMirrorBudget(3, 3s, 800ms) = %v, want 800ms", got)
@@ -15,6 +16,7 @@ func TestPerMirrorBudgetFairShare(t *testing.T) {
 }
 
 func TestPerMirrorBudgetFairShareWithoutFloor(t *testing.T) {
+	// fair share 150ms stays 150ms. There is no hard-coded floor.
 	got := perMirrorBudget(2, 300*time.Millisecond, 800*time.Millisecond)
 	if got != 150*time.Millisecond {
 		t.Fatalf("perMirrorBudget = %v, want 150ms", got)
