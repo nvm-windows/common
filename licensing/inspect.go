@@ -76,7 +76,7 @@ func licenseInfoFromToken(access *token.AccessToken) LicenseInfo {
 		return info
 	}
 
-	info.Plan = editionLabel(claims.PrimaryEntitlement())
+	info.Plan = editionDisplay(claims)
 	info.Roles = claims.Roles
 	if claims.IssuedAt != nil {
 		info.Issued = formatLicenseTime(claims.IssuedAt.Time)

@@ -12,12 +12,13 @@ func TestEditionReportsLicensedEdition(t *testing.T) {
 		ents []string
 		want string
 	}{
-		{name: "governance", ents: []string{"governance"}, want: "Governance"},
-		{name: "compliance", ents: []string{"compliance"}, want: "Audit"},
-		{name: "audit", ents: []string{"audit"}, want: "Audit"},
-		{name: "build", ents: []string{"build"}, want: "Distro"},
-		{name: "build+audit", ents: []string{"audit", "build"}, want: "Audit"},
-		{name: "build+audit+governance", ents: []string{"build", "audit", "governance"}, want: "Governance"},
+		{name: "governance", ents: []string{"governance"}, want: "Certified Governed"},
+		{name: "compliance", ents: []string{"compliance"}, want: "Certified Audit"},
+		{name: "audit", ents: []string{"audit"}, want: "Certified Audit"},
+		{name: "build", ents: []string{"build"}, want: "Certified"},
+		{name: "build+audit", ents: []string{"audit", "build"}, want: "Certified Audit"},
+		{name: "build+governance", ents: []string{"build", "governance"}, want: "Certified Governed"},
+		{name: "build+audit+governance", ents: []string{"build", "audit", "governance"}, want: "Certified Governed + Audit"},
 	} {
 		t.Run(tt.name, func(t *testing.T) {
 			withEditionToken(t, mustMintAccessTokenEntitlements(t, false, tt.ents...))
@@ -64,8 +65,8 @@ func TestEditionFallsBackToCertifiedOnCertifiedBuild(t *testing.T) {
 	} {
 		t.Run(name, func(t *testing.T) {
 			withEditionToken(t, raw)
-			if got := Edition(); got != "Certified" {
-				t.Fatalf("Edition() = %q, want Certified", got)
+			if got := Edition(); got != "Certified: Invalid License" {
+				t.Fatalf("Edition() = %q, want Certified: Invalid License", got)
 			}
 		})
 	}
@@ -75,7 +76,7 @@ func TestEditionDropsWhenLicenseVerifyStale(t *testing.T) {
 	withBuildChannel(t, "community")
 	raw := mustMintAccessToken(t, "governance", false)
 	withEditionToken(t, raw)
-	if got := Edition(); got != "Governance" {
+	if got := Edition(); got != "Certified Governed" {
 		t.Fatalf("Edition() = %q before stale", got)
 	}
 
@@ -94,7 +95,7 @@ func TestEditionStaleVerifyOnCertifiedBuild(t *testing.T) {
 	withBuildChannel(t, "certified")
 	raw := mustMintAccessToken(t, "governance", false)
 	withEditionToken(t, raw)
-	if got := Edition(); got != "Governance" {
+	if got := Edition(); got != "Certified Governed" {
 		t.Fatalf("Edition() = %q before stale", got)
 	}
 
@@ -104,8 +105,8 @@ func TestEditionStaleVerifyOnCertifiedBuild(t *testing.T) {
 	}
 	t.Cleanup(func() { verifiedAtFn = origVerified })
 
-	if got := Edition(); got != "Certified" {
-		t.Fatalf("Edition() = %q, want Certified when verify stale on certified build", got)
+	if got := Edition(); got != "Certified: Invalid License" {
+		t.Fatalf("Edition() = %q, want Certified: Invalid License when verify stale on certified build", got)
 	}
 }
 
