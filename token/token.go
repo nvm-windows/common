@@ -60,7 +60,7 @@ var FailOpenOnJWKSUnavailable = true
 // temporary access token after verification or fetch failures.
 var AllowTemporaryTokenFallback = true
 
-const jwksFetchTimeout = 1000 * time.Millisecond
+const jwksFetchTimeout = 10 * time.Second
 
 var jwksHTTPClient = &gohttp.Client{
 	Transport: &gohttp.Transport{
