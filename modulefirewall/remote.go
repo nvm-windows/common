@@ -124,8 +124,9 @@ func normalizeThumbList(in []string) []string {
 const remotePolicyBlockedMsg = "blocked by remote policy"
 
 // FormatRemoteUserMessage is the stderr text after "NVM Firewall: ".
-// 200 never includes status. 403 is policy block. 401 is user unauthorized.
-// Unreachable hosts use a short reachability sentence; other failures use ErrorMsg.
+// 200/403 never include an HTTP status. Request failures (dial, TLS, timeout,
+// missing host, non-200/403) surface ErrorMsg, which includes the status when
+// the server answered with an unexpected code.
 func FormatRemoteUserMessage(res RemoteResult) string {
 	if res.Allowed || res.Status == http.StatusOK {
 		return ""
@@ -133,16 +134,10 @@ func FormatRemoteUserMessage(res RemoteResult) string {
 	if res.Status == http.StatusForbidden {
 		return remotePolicyBlockedMsg
 	}
-	if res.Status == http.StatusUnauthorized {
-		if strings.TrimSpace(res.ErrorMsg) != "" {
-			return res.ErrorMsg
-		}
-		return "The NVM firewall remote authority denied access for this user."
-	}
 	if strings.TrimSpace(res.ErrorMsg) != "" {
 		return res.ErrorMsg
 	}
-	return "The NVM firewall remote authority is unavailable or not responding."
+	return "Remote trust service is unavailable or not responding."
 }
 
 func parseForbiddenBody(body string) []RemoteBlock {

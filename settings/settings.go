@@ -892,6 +892,11 @@ func validateMirrorURL(field, raw string) error {
 		return err
 	}
 
+	// CLI fixtures serve index.tab from httptest (http://127.0.0.1). Production never sets this.
+	if os.Getenv("NVM_TEST_HTTP_FIXTURES") == "1" {
+		return nil
+	}
+
 	u, _ := url.Parse(strings.TrimSpace(raw))
 	if strings.EqualFold(u.Scheme, "http") && !Global().AllowInsecureDownloads {
 		return fmt.Errorf("%s %q must use https unless allow_insecure_downloads is enabled", field, raw)

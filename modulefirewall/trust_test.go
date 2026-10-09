@@ -57,12 +57,7 @@ func TestEvaluateTrustedModules_RemoteOnlyUntrusted(t *testing.T) {
 func TestEvaluateTrustedModules_NoResponseUntrustedMessage(t *testing.T) {
 	prev := evaluateRemoteRequestFn
 	evaluateRemoteRequestFn = func(endpoint string, modules []PackageSpec, opts RemoteRequestOptions) RemoteResult {
-		return RemoteResult{
-			Allowed:     false,
-			Status:      0,
-			Unreachable: true,
-			ErrorMsg:    "The NVM firewall could not reach the remote authority at https://policy.example/trust because the connection timed out.",
-		}
+		return RemoteResult{Allowed: false, Status: 0, ErrorMsg: "firewall remote: request failed: timeout"}
 	}
 	defer func() { evaluateRemoteRequestFn = prev }()
 
@@ -74,7 +69,7 @@ func TestEvaluateTrustedModules_NoResponseUntrustedMessage(t *testing.T) {
 	if !res.RemoteQueried {
 		t.Fatalf("want remote queried")
 	}
-	if !strings.Contains(res.Message, "could not reach the remote authority") {
+	if !strings.Contains(res.Message, "request failed") {
 		t.Fatalf("message=%q", res.Message)
 	}
 	if strings.Contains(res.Message, "HTTP 403") || strings.Contains(res.Message, "HTTP 200") {
@@ -122,5 +117,8 @@ func TestEvaluateTrustedModules_URLOnlyQueriesRemote(t *testing.T) {
 	)
 	if res.Trusted || !res.RemoteQueried || hits != 1 {
 		t.Fatalf("want remote 403 untrusted, got %#v hits=%d", res, hits)
+	}
+	if res.Message != "blocked by remote policy" {
+		t.Fatalf("message=%q", res.Message)
 	}
 }

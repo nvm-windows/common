@@ -67,16 +67,20 @@ func TestCatalogMemoryTTL(t *testing.T) {
 	catalogMemAt = time.Time{}
 	catalogMemMu.Unlock()
 
-	setCatalogMemory([]byte("hello"))
-	body, ok := catalogMemory()
+	mirrors := []string{"https://nodejs.org/dist"}
+	setCatalogMemory(mirrors, []byte("hello"))
+	body, ok := catalogMemory(mirrors)
 	if !ok || string(body) != "hello" {
 		t.Fatalf("catalogMemory = %q ok=%v", body, ok)
+	}
+	if _, ok := catalogMemory([]string{"http://127.0.0.1:1"}); ok {
+		t.Fatal("catalog memory must not cross mirrors")
 	}
 
 	catalogMemMu.Lock()
 	catalogMemAt = time.Now().Add(-catalogCacheTTL - time.Second)
 	catalogMemMu.Unlock()
-	if _, ok := catalogMemory(); ok {
+	if _, ok := catalogMemory(mirrors); ok {
 		t.Fatal("expected expired catalog memory miss")
 	}
 }

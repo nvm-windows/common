@@ -2,7 +2,6 @@ package modulefirewall
 
 import (
 	"fmt"
-	"net/http"
 	"strings"
 )
 
@@ -106,13 +105,11 @@ func RemoteTrustUnavailable(res RemoteResult) bool {
 	if res.Status == 0 {
 		return true
 	}
-	// Clear policy/auth answers from the authority — not "unavailable".
-	switch res.Status {
-	case http.StatusOK, http.StatusUnauthorized, http.StatusForbidden:
-		return false
-	default:
+	// Non-200/403 (or empty) responses are not a clear trust deny — treat as unavailable.
+	if res.Status != 200 && res.Status != 403 {
 		return true
 	}
+	return false
 }
 
 // isPackageAllowedLocal is IsPackageAllowed without HTTPS rejection (caller already stripped URLs).

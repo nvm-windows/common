@@ -77,7 +77,7 @@ func EvaluateRemoteRequest(endpoint string, modules []PackageSpec, opts RemoteRe
 
 	ua := strings.TrimSpace(opts.UserAgent)
 	if ua == "" {
-		ua = FirewallUserAgent("unknown", "certified")
+		ua = FirewallUserAgent("unknown", "community")
 	}
 
 	tlsCfg := makeTLSConfig(opts.RemoteTLSOptions)

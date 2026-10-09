@@ -15,7 +15,7 @@ require (
 require (
 	common/fs v1.0.0
 	common/urlguard v1.0.0 // indirect
-	github.com/Masterminds/semver/v3 v3.5.0 // indirect
+	github.com/Masterminds/semver/v3 v3.4.0 // indirect
 )
 
 replace common/modulefirewall v1.0.0 => ../modulefirewall
