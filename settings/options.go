@@ -56,4 +56,8 @@ type Settings struct {
 	PackageManagerMismatchAction  string   `cfg:"pm_mismatch_action" reg:"PackageManagerMismatchAction" default:"error" enum:"ignore,warn,error" help:"Action to take when a mismatch between npm and Node.js versions is detected during install or use: ignore, warn, or error."`
 	AccessToken                   string   `cfg:"access_token" reg:"AccessToken" hidden:"true" secret:"true"`
 	AccessKey                     string   `cfg:"access_key" reg:"AccessKey" hidden:"true" secret:"true" help:"Machine license key used to authenticate downloads from Author mirrors."`
+	TimeoutCatalogMs              int      `cfg:"timeout_catalog_ms" reg:"TimeoutCatalogMs" default:"3000" help:"Overall budget in milliseconds for one Node.js version catalog fetch."`
+	TimeoutCatalogMirrorMs        int      `cfg:"timeout_catalog_mirror_ms" reg:"TimeoutCatalogMirrorMs" default:"800" help:"Maximum milliseconds one Node.js catalog mirror attempt may use."`
+	TimeoutReachabilityMs         int      `cfg:"timeout_reachability_ms" reg:"TimeoutReachabilityMs" default:"1500" help:"Milliseconds for each download-source reachability check."`
+	TimeoutDownloadMs             int      `cfg:"timeout_download_ms" reg:"TimeoutDownloadMs" default:"30000" help:"Milliseconds for archive, checksum, and other downloads."`
 }

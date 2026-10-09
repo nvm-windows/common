@@ -155,6 +155,7 @@ func Load(reload ...bool) {
 	applySecurityPolicyOverrides()
 	applyMachineOnlySettings()
 	applyAnnouncementWatermarkOverrides()
+	invalidateNetworkBudgets()
 }
 
 func isMachineOnlySetting(name string) bool {
