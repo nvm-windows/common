@@ -85,7 +85,7 @@ func rebindOrValidatePubKey(dataRoot, containerName string) error {
 		return nil
 	}
 
-	key, err := openPersistedKey(containerName)
+	key, err := openPersistedKeyRetry(containerName)
 	if err != nil {
 		key2, providerName, provErr := provisionKey(containerName)
 		if provErr != nil {

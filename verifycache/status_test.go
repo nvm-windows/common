@@ -97,4 +97,43 @@ func TestWriteDoctorReportDegraded(t *testing.T) {
 	if !strings.Contains(out, "degraded") {
 		t.Fatalf("WriteDoctorReport() = %q, want degraded mode line", out)
 	}
+	if !strings.Contains(out, "Verify key : missing") {
+		t.Fatalf("WriteDoctorReport() = %q, want missing verify key", out)
+	}
+	if !strings.Contains(out, "may lock this key store") || !strings.Contains(out, "Event code: NVM4312") {
+		t.Fatalf("WriteDoctorReport() = %q, want NVM4312 antivirus note", out)
+	}
+}
+
+func TestWriteDoctorReportOpenVerifyKeyOmitsNote(t *testing.T) {
+	var buf bytes.Buffer
+	WriteDoctorReport(&buf, Status{
+		PubKeyPath:    `C:\nvm\.verify\pubkey.cer`,
+		PubKeyPresent: true,
+		VerifyKeyName: defaultKeyName,
+		VerifyKeyOpen: true,
+	})
+	out := buf.String()
+	if strings.Contains(out, "Verify key") || strings.Contains(out, "NVM4312") {
+		t.Fatalf("WriteDoctorReport() = %q, want no missing-key note", out)
+	}
+}
+
+func TestCollectStatusMissingVerifyKey(t *testing.T) {
+	prev := openPersistedKeyAttempt
+	openPersistedKeyAttempt = func(string) (verifyKey, persistedKeyAttempt, error) {
+		return verifyKey{}, persistedKeyAttempt{Provider: msSoftwareKeyProvider, Status: 0x80090016}, errVerifyKeyNotOpen
+	}
+	t.Cleanup(func() { openPersistedKeyAttempt = prev })
+
+	status, err := CollectStatus(t.TempDir())
+	if err != nil {
+		t.Fatalf("CollectStatus() error = %v", err)
+	}
+	if status.VerifyKeyOpen {
+		t.Fatal("CollectStatus() VerifyKeyOpen = true, want false")
+	}
+	if status.VerifyKeyName != defaultKeyName {
+		t.Fatalf("CollectStatus() VerifyKeyName = %q", status.VerifyKeyName)
+	}
 }

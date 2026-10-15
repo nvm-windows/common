@@ -146,7 +146,7 @@ func signDelegatedScript(dataRoot, scriptPath string, force bool) error {
 		return err
 	}
 
-	key, err := openPersistedKey(containerName)
+	key, err := openSigningKey(dataRoot, containerName)
 	if err != nil {
 		return err
 	}

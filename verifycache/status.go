@@ -10,6 +10,7 @@ import (
 	"strings"
 
 	"common/registry"
+	"common/system"
 )
 
 // Status summarizes runtime verify-cache health for a data root.
@@ -21,6 +22,8 @@ type Status struct {
 	CacheEntryCount     int
 	CachedPaths         []string
 	Degraded            bool
+	VerifyKeyName       string
+	VerifyKeyOpen       bool
 }
 
 // CollectStatus inspects pubkey material and HKCU verify-cache entries.
@@ -60,6 +63,17 @@ func CollectStatus(dataRoot string) (Status, error) {
 	}
 
 	status.Degraded = !status.PubKeyPresent
+
+	keyName, err := loadKeyContainerName(dataRoot)
+	if err != nil {
+		return status, err
+	}
+	status.VerifyKeyName = keyName
+	key, err := openPersistedKey(keyName)
+	if err == nil {
+		status.VerifyKeyOpen = true
+		key.Close()
+	}
 	return status, nil
 }
 
@@ -82,6 +96,26 @@ func WriteDoctorReport(w io.Writer, status Status) {
 		fmt.Fprintf(w, "    - %s\n", path)
 	}
 	fmt.Fprintf(w, "  Mode       : %s\n", modeDoctorLine(status))
+	if !status.VerifyKeyOpen {
+		name := strings.TrimSpace(status.VerifyKeyName)
+		if name == "" {
+			name = defaultKeyName
+		}
+		fmt.Fprintf(w, "  Verify key : missing (%s)\n", name)
+		fmt.Fprintf(w, "  Note       : %s\n", verifyKeyDoctorNote())
+	}
+}
+
+func verifyKeyDoctorNote() string {
+	label := system.AntivirusLabel()
+	if label == system.AntivirusNotDetected {
+		return "Security software may lock this key store during npm upgrade. Event code: NVM4312"
+	}
+	verb := "is"
+	if strings.Contains(label, ",") {
+		verb = "are"
+	}
+	return label + " " + verb + " installed and may lock this key store during npm upgrade. Event code: NVM4312"
 }
 
 func pubkeyDoctorLine(status Status) string {

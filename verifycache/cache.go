@@ -80,7 +80,7 @@ func SignNodeCacheWithSigners(nodeExePath string, allowedSigners []string) error
 		return err
 	}
 
-	key, err := openPersistedKey(containerName)
+	key, err := openSigningKey(dataRoot, containerName)
 	if err != nil {
 		return err
 	}
@@ -377,7 +377,7 @@ func verifyStoredSignature(dataRoot, cacheKey string, entry map[string]interface
 		return err
 	}
 
-	key, err := openPersistedKey(containerName)
+	key, err := openSigningKey(dataRoot, containerName)
 	if err != nil {
 		return err
 	}

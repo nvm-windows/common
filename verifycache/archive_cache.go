@@ -57,7 +57,7 @@ func signDownloadArchiveCache(dataRoot, archivePath string) error {
 		return err
 	}
 
-	key, err := openPersistedKey(containerName)
+	key, err := openSigningKey(dataRoot, containerName)
 	if err != nil {
 		return err
 	}
