@@ -3,6 +3,7 @@ module common/verifycache
 go 1.26.2
 
 require (
+	common/eventlog v1.0.0
 	common/modulefirewall v1.0.0
 	common/preferences v1.0.0
 	common/registry v1.0.0
@@ -17,6 +18,8 @@ require (
 	common/urlguard v1.0.0 // indirect
 	github.com/Masterminds/semver/v3 v3.4.0 // indirect
 )
+
+replace common/eventlog v1.0.0 => ../eventlog
 
 replace common/modulefirewall v1.0.0 => ../modulefirewall
 

@@ -22,15 +22,15 @@ const (
 )
 
 var (
-	ncrypt                         = windows.NewLazySystemDLL("ncrypt.dll")
-	procNCryptOpenStorageProvider  = ncrypt.NewProc("NCryptOpenStorageProvider")
-	procNCryptFreeObject           = ncrypt.NewProc("NCryptFreeObject")
-	procNCryptCreatePersistedKey   = ncrypt.NewProc("NCryptCreatePersistedKey")
-	procNCryptFinalizeKey        = ncrypt.NewProc("NCryptFinalizeKey")
-	procNCryptOpenKey              = ncrypt.NewProc("NCryptOpenKey")
-	procNCryptExportKey            = ncrypt.NewProc("NCryptExportKey")
-	procNCryptSignHash             = ncrypt.NewProc("NCryptSignHash")
-	procNCryptVerifySignature      = ncrypt.NewProc("NCryptVerifySignature")
+	ncrypt                        = windows.NewLazySystemDLL("ncrypt.dll")
+	procNCryptOpenStorageProvider = ncrypt.NewProc("NCryptOpenStorageProvider")
+	procNCryptFreeObject          = ncrypt.NewProc("NCryptFreeObject")
+	procNCryptCreatePersistedKey  = ncrypt.NewProc("NCryptCreatePersistedKey")
+	procNCryptFinalizeKey         = ncrypt.NewProc("NCryptFinalizeKey")
+	procNCryptOpenKey             = ncrypt.NewProc("NCryptOpenKey")
+	procNCryptExportKey           = ncrypt.NewProc("NCryptExportKey")
+	procNCryptSignHash            = ncrypt.NewProc("NCryptSignHash")
+	procNCryptVerifySignature     = ncrypt.NewProc("NCryptVerifySignature")
 )
 
 type verifyKey struct {
@@ -97,21 +97,23 @@ func exportPublicKey(key verifyKey, pubKeyPath string) error {
 	return nil
 }
 
-func openPersistedKey(keyName string) (verifyKey, error) {
+func openPersistedKeyNCrypt(keyName string) (verifyKey, persistedKeyAttempt, error) {
+	var last persistedKeyAttempt
 	for _, providerName := range []string{msPlatformCryptoProvider, msSoftwareKeyProvider} {
 		provider, err := openProvider(providerName)
 		if err != nil {
+			last = persistedKeyAttempt{Provider: providerName, Detail: err.Error()}
 			continue
 		}
 
 		keyNameW, err := windows.UTF16PtrFromString(keyName)
 		if err != nil {
 			provider.Close()
-			return verifyKey{}, err
+			return verifyKey{}, persistedKeyAttempt{Provider: providerName, Detail: err.Error()}, err
 		}
 
 		var keyHandle windows.Handle
-		r, _, callErr := procNCryptOpenKey.Call(
+		r, _, _ := procNCryptOpenKey.Call(
 			uintptr(provider.handle),
 			uintptr(unsafe.Pointer(&keyHandle)),
 			uintptr(unsafe.Pointer(keyNameW)),
@@ -120,16 +122,14 @@ func openPersistedKey(keyName string) (verifyKey, error) {
 		)
 		provider.Close()
 		if r != 0 {
-			if callErr != syscall.Errno(0) && callErr != nil {
-				continue
-			}
+			last = persistedKeyAttempt{Provider: providerName, Status: uint32(r)}
 			continue
 		}
 
-		return verifyKey{handle: keyHandle}, nil
+		return verifyKey{handle: keyHandle}, persistedKeyAttempt{}, nil
 	}
 
-	return verifyKey{}, fmt.Errorf("persisted verify key %q not found", keyName)
+	return verifyKey{}, last, errVerifyKeyNotOpen
 }
 
 func createPersistedKey(providerName, keyName string) (verifyKey, error) {
