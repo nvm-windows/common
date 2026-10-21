@@ -22,6 +22,10 @@ var accessTokenForEdition = func() string {
 	return strings.TrimSpace(settings.Global().AccessToken)
 }
 
+func init() {
+	settings.CertifiedBuild = !IsCommunityBuild()
+}
+
 // IsCommunityBuild reports whether this binary is the community package
 // (LocalAppData layout), independent of whether a commercial access token is set.
 func IsCommunityBuild() bool {
