@@ -499,6 +499,29 @@ func TestGet_UnknownSetting(t *testing.T) {
 	}
 }
 
+func TestDefaultShimBunByEdition(t *testing.T) {
+	orig := settings.CertifiedBuild
+	t.Cleanup(func() { settings.CertifiedBuild = orig })
+
+	settings.CertifiedBuild = false
+	got, err := settings.DefaultValue("shim_bun")
+	if err != nil {
+		t.Fatalf("DefaultValue(shim_bun) community error = %v", err)
+	}
+	if got != false {
+		t.Fatalf("community DefaultValue(shim_bun) = %v, want false", got)
+	}
+
+	settings.CertifiedBuild = true
+	got, err = settings.DefaultValue("shim_bun")
+	if err != nil {
+		t.Fatalf("DefaultValue(shim_bun) certified error = %v", err)
+	}
+	if got != true {
+		t.Fatalf("certified DefaultValue(shim_bun) = %v, want true", got)
+	}
+}
+
 // ── helpers ───────────────────────────────────────────────────────────────────
 
 // containsURL checks whether v (string or []string) contains a substring.

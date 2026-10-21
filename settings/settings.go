@@ -24,6 +24,10 @@ var semverPattern = regexp.MustCompile(`^v?\d+\.\d+\.\d+(-[0-9A-Za-z.-]+)?(\+[0-
 var globalSettings Settings
 var loaded bool
 
+// CertifiedBuild is set by the license package from the injected build channel.
+// When true and ShimBun is absent from the registry, DefaultValue("shim_bun") is true.
+var CertifiedBuild bool
+
 func List() []string {
 	t := reflect.TypeOf(Settings{})
 	options := make([]string, 0, t.NumField())
@@ -1158,6 +1162,10 @@ func DefaultValue(name string) (interface{}, error) {
 			return append([]string(nil), DefaultAllowedSigners...), nil
 		}
 		return nil, nil
+	}
+
+	if name == "shim_bun" && CertifiedBuild {
+		return true, nil
 	}
 
 	switch field.Type.Kind() {

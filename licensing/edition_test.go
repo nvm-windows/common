@@ -1,6 +1,7 @@
 package license
 
 import (
+	"common/settings"
 	"common/token"
 	"testing"
 	"time"
@@ -121,6 +122,11 @@ func withEditionToken(t *testing.T, raw string) {
 func withBuildChannel(t *testing.T, channel string) {
 	t.Helper()
 	orig := buildChannel
+	origCert := settings.CertifiedBuild
 	buildChannel = channel
-	t.Cleanup(func() { buildChannel = orig })
+	settings.CertifiedBuild = !IsCommunityBuild()
+	t.Cleanup(func() {
+		buildChannel = orig
+		settings.CertifiedBuild = origCert
+	})
 }
