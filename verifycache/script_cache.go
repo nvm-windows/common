@@ -118,6 +118,7 @@ func signDelegatedScript(dataRoot, scriptPath string, force bool) error {
 		return nil
 	} else if !force && isDiskChangeVerifyError(err) && !mayResignChangedModule(scriptPath) {
 		// Leave VerifyCache stale for untrusted self-updates (deny/prompt).
+		warnUntrustedChangedSkip(scriptPath)
 		return nil
 	}
 

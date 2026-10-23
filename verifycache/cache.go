@@ -44,6 +44,7 @@ func SignNodeCacheWithSigners(nodeExePath string, allowedSigners []string) error
 	} else if !strings.EqualFold(filepath.Base(nodeExePath), "node.exe") &&
 		isDiskChangeVerifyError(err) && !mayResignChangedModule(nodeExePath) {
 		// Non-node helpers follow the same TrustedModules / allow gate as scripts.
+		warnUntrustedChangedSkip(nodeExePath)
 		return nil
 	}
 
