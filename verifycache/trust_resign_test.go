@@ -5,10 +5,21 @@ package verifycache
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"common/settings"
 )
+
+func TestUntrustedChangedSkipMessage(t *testing.T) {
+	got := untrustedChangedSkipMessage(`C:\nvm\installs\v22.0.0\opencode.cmd`)
+	if !strings.Contains(got, "nvm firewall trust module opencode") {
+		t.Fatalf("missing trust command: %q", got)
+	}
+	if !strings.Contains(got, "nvm reshim alone will not keep this module trusted") {
+		t.Fatalf("missing reshim warning: %q", got)
+	}
+}
 
 func TestSignDelegatedScriptSkipsUntrustedDiskChange(t *testing.T) {
 	dataRoot := setupVerifyCacheTestProfile(t)

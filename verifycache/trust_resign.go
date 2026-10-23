@@ -6,9 +6,25 @@ import (
 	"common/modulefirewall"
 	"common/settings"
 	"errors"
+	"fmt"
+	"os"
 	"path/filepath"
 	"strings"
 )
+
+// untrustedChangedSkipMessage is printed when reshim leaves a disk-changed
+// untrusted launcher stale. nvm reshim alone will not persist trust.
+func untrustedChangedSkipMessage(scriptPath string) string {
+	name := moduleNameFromPath(scriptPath)
+	return fmt.Sprintf(
+		"%s changed and was not re-signed. Next launch will be blocked. nvm reshim alone will not keep this module trusted after the next self-update. To allow self-updates: nvm firewall trust module %s",
+		name, name,
+	)
+}
+
+func warnUntrustedChangedSkip(scriptPath string) {
+	fmt.Fprintln(os.Stderr, untrustedChangedSkipMessage(scriptPath))
+}
 
 // isDiskChangeVerifyError reports whether verify failed because the on-disk
 // target no longer matches a prior cache entry (content/identity drift).
