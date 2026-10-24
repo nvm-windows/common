@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 	"strings"
 
+	"common/fs"
 	"common/settings"
 )
 
@@ -20,6 +21,10 @@ func processRoot(value *string) (deferredFn func(), err error) {
 
 	sourceRoot := filepath.Clean(s.Root)
 	targetRoot := filepath.Clean(settings.Expand(*value))
+
+	if err = fs.CheckInstallRootAllowed(targetRoot); err != nil {
+		return
+	}
 
 	if strings.EqualFold(sourceRoot, targetRoot) {
 		err = fmt.Errorf("root value is already %s", *value)
@@ -44,7 +49,7 @@ func processRoot(value *string) (deferredFn func(), err error) {
 			return
 		}
 
-		fmt.Println("\nIf you wish to use the same Node.js versions in the new root, please move the following directories\n")
+		fmt.Println("\nIf you wish to use the same Node.js versions in the new root, please move the following directories")
 		for _, v := range versions {
 			fmt.Printf("      %s\n", v)
 		}
