@@ -163,17 +163,28 @@ func readRegisteredDisplayName(appID string) string {
 // Optional actions are rendered as protocol-handler buttons.
 // Errors are non-fatal; the caller should fall back to a console message.
 func Send(appID, title, message string, actions ...Action) error {
-	return sendWithSound(appID, title, message, "", actions...)
+	return sendWithSound(appID, "", title, message, "", actions...)
+}
+
+// SendTo sends on a Windows toast collection so Settings can mute that type.
+// Empty collectionID uses the default notifier (no per-type mute).
+func SendTo(appID, collectionID, title, message string, actions ...Action) error {
+	return sendWithSound(appID, collectionID, title, message, "", actions...)
 }
 
 // SendWithSound displays a Windows toast notification with an optional sound URI.
 // Use a Windows sound URI like "ms-winsoundevent:Notification.Default".
 // When soundURI is empty, the toast is silent.
 func SendWithAudio(appID, title, message, soundURI string, actions ...Action) error {
-	return sendWithSound(appID, title, message, soundURI, actions...)
+	return sendWithSound(appID, "", title, message, soundURI, actions...)
 }
 
-func sendWithSound(appID, title, message, soundURI string, actions ...Action) error {
+// SendWithAudioTo is SendWithAudio on a toast collection.
+func SendWithAudioTo(appID, collectionID, title, message, soundURI string, actions ...Action) error {
+	return sendWithSound(appID, collectionID, title, message, soundURI, actions...)
+}
+
+func sendWithSound(appID, collectionID, title, message, soundURI string, actions ...Action) error {
 	// Ensure the AUMID is registered; Windows silently drops notifications for
 	// unregistered app IDs even when CreateToastNotifierWithId returns S_OK.
 	// Never register DisplayName=appID — that shows AuthorSoftware.NVMWindows
@@ -272,7 +283,16 @@ func sendWithSound(appID, title, message, soundURI string, actions ...Action) er
 	if r != 0 {
 		return fmt.Errorf("CreateToastNotifierWithId: 0x%08x", r)
 	}
+	if col := strings.TrimSpace(collectionID); col != "" {
+		if n, err := notifierForCollection(toastMgrStatics, appID, col); err == nil && n != 0 {
+			vtblRelease(notifier)
+			notifier = n
+		}
+	}
 	defer vtblRelease(notifier)
+	if collectionID != "" && notifierSettingDisabled(notifier) {
+		return nil
+	}
 
 	// --- Get IToastNotificationFactory → IToastNotification ---
 	toastClassID, err := newHString("Windows.UI.Notifications.ToastNotification")
