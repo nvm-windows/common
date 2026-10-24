@@ -844,6 +844,9 @@ func Validate(name string, value interface{}) error {
 			return fmt.Errorf("root must be a non-empty path")
 		}
 		cleaned := filepath.Clean(Expand(strVal))
+		if err := fs.CheckInstallRootAllowed(cleaned); err != nil {
+			return err
+		}
 		fs.WarnRiskyRootLayout(cleaned)
 		fs.WarnSharedWritableRoot(cleaned)
 

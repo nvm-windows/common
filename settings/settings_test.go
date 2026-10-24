@@ -499,6 +499,25 @@ func TestGet_UnknownSetting(t *testing.T) {
 	}
 }
 
+func TestRoot_RejectsProgramFiles(t *testing.T) {
+	pf := os.Getenv("ProgramFiles")
+	if pf == "" {
+		t.Skip("ProgramFiles not set")
+	}
+	err := settings.Put("root", filepath.Join(pf, "nodejs"))
+	if err == nil {
+		t.Fatal("Put(root, Program Files\\nodejs) expected NVM4313, got nil")
+	}
+	if !strings.Contains(err.Error(), "NVM4313") {
+		t.Fatalf("Put(root) error = %v, want NVM4313", err)
+	}
+}
+
+func TestRoot_AllowsDedicatedChild(t *testing.T) {
+	dir := filepath.Join(t.TempDir(), "nvm-versions")
+	mustPut(t, "root", dir)
+}
+
 func TestDefaultShimBunByEdition(t *testing.T) {
 	orig := settings.CertifiedBuild
 	t.Cleanup(func() { settings.CertifiedBuild = orig })
