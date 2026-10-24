@@ -28,8 +28,9 @@ func SignVersionScripts(versionDir string) error {
 }
 
 // SignScript force-resigns one delegated .cmd/.bat/.js launcher, bypassing the
-// TrustedModules gate. Used after the user accepts a trust prompt so VerifyCache
-// can be refreshed before the next launch retry.
+// TrustedModules gate. In-process callers (nvm firewall trust module) use this
+// directly. The --sign-script CLI flag is gated separately: signed proxy parent
+// plus an inherited pipe. Do not treat argv as a trust source.
 func SignScript(scriptPath string) error {
 	scriptPath = strings.TrimSpace(scriptPath)
 	if scriptPath == "" {
