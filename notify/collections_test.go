@@ -4,10 +4,10 @@ import "testing"
 
 func TestLiveCollectionsIDs(t *testing.T) {
 	got := LiveCollections()
-	if len(got) != 3 {
-		t.Fatalf("len = %d, want 3", len(got))
+	if len(got) != 4 {
+		t.Fatalf("len = %d, want 4", len(got))
 	}
-	want := []string{CollectionReleases, CollectionPrereleases, CollectionNews}
+	want := []string{CollectionReleases, CollectionHotfixes, CollectionPrereleases, CollectionNews}
 	for i, id := range want {
 		if got[i].ID != id {
 			t.Fatalf("LiveCollections[%d].ID = %q, want %q", i, got[i].ID, id)

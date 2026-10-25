@@ -4,6 +4,7 @@ package notify
 // Assign a collection only when the user may mute that type.
 const (
 	CollectionReleases    = "nvm.releases"
+	CollectionHotfixes    = "nvm.hotfixes"
 	CollectionPrereleases = "nvm.prereleases"
 	CollectionNews        = "nvm.news"
 )
@@ -24,6 +25,7 @@ const (
 func LiveCollections() []struct{ ID, Name string } {
 	return []struct{ ID, Name string }{
 		{CollectionReleases, "Releases"},
+		{CollectionHotfixes, "Hotfixes"},
 		{CollectionPrereleases, "Pre-releases"},
 		{CollectionNews, "News"},
 	}
