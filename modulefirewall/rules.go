@@ -16,13 +16,21 @@ const (
 	DefaultApprovedWhenEmpty = "ALL"
 )
 
+// DefaultTrustedPackageManagers is the empty-TrustedModules seed:
+// deny every module except supported package managers.
+var DefaultTrustedPackageManagers = []string{
+	"NOT ALL", "npm", "npx", "yarn", "yarnpkg", "corepack", "pnpm", "vlt",
+}
+
 // NormalizeTrustedModules applies the empty TrustedModules default:
-// deny every module except bundled package managers, so npm/yarn/corepack
+// deny every module except bundled package managers, so npm/yarn/corepack/vlt
 // can re-sign after an upgrade.
 func NormalizeTrustedModules(entries []string) []string {
 	normalized := NormalizeList(entries, "")
 	if len(normalized) == 0 {
-		return []string{"NOT ALL", "npm", "npx", "yarn", "yarnpkg", "corepack", "pnpm"}
+		out := make([]string, len(DefaultTrustedPackageManagers))
+		copy(out, DefaultTrustedPackageManagers)
+		return out
 	}
 	return normalized
 }

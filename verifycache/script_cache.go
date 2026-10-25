@@ -17,8 +17,9 @@ const scriptCacheBucket = "scripts"
 var ErrScriptCacheMiss = errors.New("delegated script cache entry missing")
 
 // SignVersionScripts records TPM-signed hashes for top-level .cmd/.bat launchers,
-// package-manager JS entrypoints (npm-cli.js / npx-cli.js), and Authenticode
-// verify-cache entries for top-level .exe helpers.
+// package-manager JS entrypoints (npm-cli.js / npx-cli.js), Authenticode
+// verify-cache entries for top-level .exe helpers, and Yarn Classic / pnpm
+// global bin launchers outside the version directory.
 func SignVersionScripts(versionDir string) error {
 	dataRoot, err := dataRootFromVersionDir(versionDir)
 	if err != nil {
