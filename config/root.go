@@ -18,6 +18,10 @@ func processRoot(value *string) (deferredFn func(), err error) {
 	}
 
 	*value = strings.Trim(*value, `"`) // Remove potential quotes from input
+	if strings.TrimSpace(*value) == "" {
+		err = fmt.Errorf("root must be a non-empty path")
+		return
+	}
 
 	sourceRoot := filepath.Clean(s.Root)
 	targetRoot := filepath.Clean(settings.Expand(*value))
