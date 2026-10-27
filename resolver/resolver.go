@@ -26,14 +26,12 @@ func Find(version string) (string, string, error) {
 		isUserAlias = true
 	}
 
-	resolvedViaAlias := false
 	if isUserAlias || lower == "latest" || lower == "lts" || strings.HasPrefix(lower, "lts/") {
 		resolved, err := alias(lower)
 		if err != nil {
 			return "", "", err
 		}
 		v = resolved
-		resolvedViaAlias = true
 	}
 
 	// Strip prerelease/build metadata for matching purposes.
@@ -41,9 +39,10 @@ func Find(version string) (string, string, error) {
 	// implemented with Alpha releases.
 	v = strings.Split(v, "-")[0]
 
-	// After alias resolution the target may already be exact (user alias,
-	// default/current, or latest/lts). Skip a second index.tab fetch.
-	if resolvedViaAlias && isExactVersionSpec(v) {
+	// Exact x.y.z is already concrete (typed by the user, or after alias
+	// resolution). Skip index.tab so air-gapped `nvm install 24.22.1` can
+	// use a local archive without DNS.
+	if isExactVersionSpec(v) {
 		return NormalizeVersion(v), "", nil
 	}
 
