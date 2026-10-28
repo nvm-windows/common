@@ -122,3 +122,22 @@ func TestEvaluateTrustedModules_URLOnlyQueriesRemote(t *testing.T) {
 		t.Fatalf("message=%q", res.Message)
 	}
 }
+
+func TestExplicitModuleGrant(t *testing.T) {
+	pkg := PackageSpec{Name: "eslint", Raw: "eslint"}
+	if ExplicitModuleGrant(pkg, nil) {
+		t.Fatal("empty")
+	}
+	if ExplicitModuleGrant(pkg, []string{"ALL"}) {
+		t.Fatal("ALL")
+	}
+	if ExplicitModuleGrant(pkg, []string{"NOT ALL", "npm", "npx"}) {
+		t.Fatal("bundled seeds")
+	}
+	if ExplicitModuleGrant(pkg, []string{"https://policy.example/fw"}) {
+		t.Fatal("url")
+	}
+	if !ExplicitModuleGrant(pkg, []string{"NOT ALL", "eslint"}) {
+		t.Fatal("explicit eslint")
+	}
+}

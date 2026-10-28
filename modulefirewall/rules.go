@@ -16,6 +16,43 @@ const (
 	DefaultApprovedWhenEmpty = "ALL"
 )
 
+var bundledMalwareTrustSeeds = []string{"npm", "npx", "yarn", "yarnpkg", "corepack", "pnpm"}
+
+// ExplicitModuleGrant is true only for an explicit local grant.
+// Empty lists, ALL, NOT ALL, HTTPS URLs, and bundled package-manager names do not count.
+func ExplicitModuleGrant(pkg PackageSpec, rules []string) bool {
+	for _, raw := range rules {
+		e := strings.TrimSpace(raw)
+		if e == "" {
+			continue
+		}
+		if _, ok := ExtractHTTPSURL([]string{e}); ok {
+			continue
+		}
+		entry, negated, err := normalizeRuleEntry(e)
+		if err != nil || negated || entry == "" {
+			continue
+		}
+		if strings.EqualFold(entry, "all") {
+			continue
+		}
+		skip := false
+		for _, name := range bundledMalwareTrustSeeds {
+			if strings.EqualFold(entry, name) {
+				skip = true
+				break
+			}
+		}
+		if skip {
+			continue
+		}
+		if ruleMatches(entry, pkg) {
+			return true
+		}
+	}
+	return false
+}
+
 // NormalizeTrustedModules applies the empty TrustedModules default:
 // deny every module except bundled package managers, so npm/yarn/corepack
 // can re-sign after an upgrade.
