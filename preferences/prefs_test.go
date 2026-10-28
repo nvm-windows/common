@@ -57,8 +57,8 @@ func TestReloadBuildsPolicyAndPreferenceRoots(t *testing.T) {
 
 	wantRoots := []string{
 		"HKLM/SOFTWARE/Policies/Author Software/nvm",
-		"HKCU/Software/Policies/Author Software/nvm",
 		"HKLM/SOFTWARE/Author Software/Preferences/nvm",
+		"HKCU/Software/Policies/Author Software/nvm",
 		"HKCU/Software/Author Software/Preferences/nvm",
 	}
 	if !reflect.DeepEqual(ROOTS, wantRoots) {
