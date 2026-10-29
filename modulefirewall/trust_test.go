@@ -134,6 +134,10 @@ func TestExplicitModuleGrant(t *testing.T) {
 	if ExplicitModuleGrant(pkg, []string{"NOT ALL", "npm", "npx"}) {
 		t.Fatal("bundled seeds")
 	}
+	vlt := PackageSpec{Name: "vlt", Raw: "vlt"}
+	if ExplicitModuleGrant(vlt, NormalizeTrustedModules(nil)) {
+		t.Fatal("vlt default seed")
+	}
 	if ExplicitModuleGrant(pkg, []string{"https://policy.example/fw"}) {
 		t.Fatal("url")
 	}
