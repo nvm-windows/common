@@ -16,7 +16,13 @@ const (
 	DefaultApprovedWhenEmpty = "ALL"
 )
 
-var bundledMalwareTrustSeeds = []string{"npm", "npx", "yarn", "yarnpkg", "corepack", "pnpm"}
+// DefaultTrustedPackageManagers is the empty-TrustedModules seed:
+// deny every module except supported package managers.
+var DefaultTrustedPackageManagers = []string{
+	"npm", "npx", "yarn", "yarnpkg", "corepack", "pnpm", "vlt",
+}
+
+var bundledMalwareTrustSeeds = DefaultTrustedPackageManagers
 
 // ExplicitModuleGrant is true only for an explicit local grant.
 // Empty lists, ALL, NOT ALL, HTTPS URLs, and bundled package-manager names do not count.
@@ -54,12 +60,15 @@ func ExplicitModuleGrant(pkg PackageSpec, rules []string) bool {
 }
 
 // NormalizeTrustedModules applies the empty TrustedModules default:
-// deny every module except bundled package managers, so npm/yarn/corepack
+// deny every module except bundled package managers, so npm/yarn/corepack/vlt
 // can re-sign after an upgrade.
 func NormalizeTrustedModules(entries []string) []string {
 	normalized := NormalizeList(entries, "")
 	if len(normalized) == 0 {
-		return []string{"NOT ALL", "npm", "npx", "yarn", "yarnpkg", "corepack", "pnpm"}
+		out := make([]string, 1+len(DefaultTrustedPackageManagers))
+		out[0] = "NOT ALL"
+		copy(out[1:], DefaultTrustedPackageManagers)
+		return out
 	}
 	return normalized
 }
