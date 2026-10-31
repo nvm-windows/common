@@ -15,15 +15,21 @@ func TestEnforcementSource(t *testing.T) {
 	oldSecurity := append([]string(nil), prefs.SECURITY_POLICY_ROOTS...)
 	oldMachine := prefs.MACHINE_PREFERENCE_ROOT
 	oldUser := prefs.USER_PREFERENCE_ROOT
+	oldMachinePolicy := prefs.MACHINE_POLICY_ROOT
+	oldHonor := settings.HonorMachinePolicyFn
 	root := "HKCU/Software/NVMTest/enforcement_source"
 	prefs.SECURITY_POLICY_ROOTS = []string{root + "/policy"}
+	prefs.MACHINE_POLICY_ROOT = root + "/policy"
 	prefs.MACHINE_PREFERENCE_ROOT = root + "/machine"
 	prefs.USER_PREFERENCE_ROOT = root + "/user"
+	settings.HonorMachinePolicyFn = func() bool { return true }
 	t.Cleanup(func() {
 		_ = exec.Command("reg", "delete", `HKCU\Software\NVMTest\enforcement_source`, "/f").Run()
 		prefs.SECURITY_POLICY_ROOTS = oldSecurity
+		prefs.MACHINE_POLICY_ROOT = oldMachinePolicy
 		prefs.MACHINE_PREFERENCE_ROOT = oldMachine
 		prefs.USER_PREFERENCE_ROOT = oldUser
+		settings.HonorMachinePolicyFn = oldHonor
 	})
 
 	if err := registry.Put([]string{"https://user.example/trust"}, root+"/user/ApprovedModules"); err != nil {

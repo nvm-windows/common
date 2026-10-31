@@ -28,6 +28,99 @@ var loaded bool
 // When true and ShimBun is absent from the registry, DefaultValue("shim_bun") is true.
 var CertifiedBuild bool
 
+// HonorMachinePolicyFn is wired by the license package. When false/nil, values under
+// Software\Policies\Author Software\nvm are ignored for preference overrides (except
+// licensing secrets needed to establish the entitlement).
+var HonorMachinePolicyFn func() bool
+
+func honorMachinePolicy() bool {
+	if HonorMachinePolicyFn == nil {
+		return false
+	}
+	return HonorMachinePolicyFn()
+}
+
+func normalizeRootPath(root string) string {
+	return strings.ToUpper(strings.ReplaceAll(strings.TrimSpace(root), `\`, "/"))
+}
+
+func isPoliciesRoot(root string) bool {
+	normalized := normalizeRootPath(root)
+	if normalized == "" {
+		return false
+	}
+	if normalizeRootPath(prefs.MACHINE_POLICY_ROOT) == normalized {
+		return true
+	}
+	if normalizeRootPath(prefs.USER_POLICY_ROOT) == normalized {
+		return true
+	}
+	for _, p := range prefs.POLICY_ROOTS {
+		if normalizeRootPath(p) == normalized {
+			return true
+		}
+	}
+	return false
+}
+
+// effectiveSettingRoots returns registry roots for preference merge. Policies hives
+// are included only when HonorMachinePolicyFn reports a governance entitlement.
+func effectiveSettingRoots() []string {
+	if honorMachinePolicy() {
+		return append([]string(nil), prefs.ROOTS...)
+	}
+	out := make([]string, 0, len(prefs.ROOTS))
+	for _, root := range prefs.ROOTS {
+		if isPoliciesRoot(root) {
+			continue
+		}
+		out = append(out, root)
+	}
+	return out
+}
+
+// licensingBootstrapRoots always includes machine Policies + Preferences so
+// AccessToken / AccessKey can be read before deciding whether to honor Policies.
+func licensingBootstrapRoots() []string {
+	roots := make([]string, 0, 2)
+	if root := strings.TrimSpace(prefs.MACHINE_POLICY_ROOT); root != "" {
+		roots = append(roots, root)
+	}
+	if root := strings.TrimSpace(prefs.MACHINE_PREFERENCE_ROOT); root != "" {
+		roots = append(roots, root)
+	}
+	return roots
+}
+
+func seedLicensingFromMachineHives() {
+	for _, root := range licensingBootstrapRoots() {
+		values, err := registry.GetAll(root)
+		if err != nil || len(values) == 0 {
+			continue
+		}
+		if raw, ok := values["AccessToken"]; ok && strings.TrimSpace(globalSettings.AccessToken) == "" {
+			if normalized, ok := normalizeRegistryStringValue(raw); ok {
+				globalSettings.AccessToken = normalized
+			}
+		}
+		if raw, ok := values["AccessKey"]; ok && strings.TrimSpace(globalSettings.AccessKey) == "" {
+			if normalized, ok := normalizeRegistryStringValue(raw); ok {
+				globalSettings.AccessKey = normalized
+			}
+		}
+		if raw, ok := values["AirGapped"]; ok {
+			switch v := raw.(type) {
+			case bool:
+				globalSettings.AirGapped = v
+			case uint32:
+				globalSettings.AirGapped = v != 0
+			case int:
+				globalSettings.AirGapped = v != 0
+			}
+		}
+	}
+}
+
 func List() []string {
 	t := reflect.TypeOf(Settings{})
 	options := make([]string, 0, t.NumField())
@@ -94,14 +187,22 @@ func Load(reload ...bool) {
 	}
 
 	globalSettings = Settings{}
+	// Licensing secrets may live only under Policies; seed them before the
+	// governance gate decides whether the rest of that hive is honored.
+	seedLicensingFromMachineHives()
 
-	values, err := registry.GetAll(prefs.ROOTS[0])
+	roots := effectiveSettingRoots()
+	if len(roots) == 0 {
+		return
+	}
+
+	values, err := registry.GetAll(roots[0])
 	if err != nil {
 		return
 	}
 
-	if len(prefs.ROOTS) > 1 {
-		for _, root := range prefs.ROOTS[1:] {
+	if len(roots) > 1 {
+		for _, root := range roots[1:] {
 			data, err := registry.GetAll(root)
 			if err != nil {
 				continue
@@ -224,7 +325,7 @@ func isSecurityPolicySetting(name string) bool {
 }
 
 func securityPolicyRegKeys(name string) []string {
-	if len(prefs.SECURITY_POLICY_ROOTS) == 0 || !isSecurityPolicySetting(name) {
+	if !honorMachinePolicy() || len(prefs.SECURITY_POLICY_ROOTS) == 0 || !isSecurityPolicySetting(name) {
 		return nil
 	}
 
@@ -306,7 +407,7 @@ func joinedRegKey(root, name string) string {
 }
 
 func applySecurityPolicyOverrides() {
-	if len(prefs.SECURITY_POLICY_ROOTS) == 0 {
+	if !honorMachinePolicy() || len(prefs.SECURITY_POLICY_ROOTS) == 0 {
 		return
 	}
 
@@ -478,6 +579,12 @@ func Global() Settings {
 	}
 
 	return globalSettings
+}
+
+// PeekAccessToken returns the in-memory AccessToken without triggering Load.
+// Used by license gates during Load (seedLicensing runs before preference merge).
+func PeekAccessToken() string {
+	return strings.TrimSpace(globalSettings.AccessToken)
 }
 
 // expandEnvVars expands Windows-style %VAR% environment variable references in path.
@@ -724,8 +831,9 @@ func lookupRegKeys(name string) []string {
 		return keys
 	}
 
-	keys := make([]string, 0, len(prefs.ROOTS))
-	for _, root := range prefs.ROOTS {
+	roots := effectiveSettingRoots()
+	keys := make([]string, 0, len(roots))
+	for _, root := range roots {
 		keys = append(keys, regkey(name, root))
 	}
 
@@ -737,6 +845,10 @@ func lookupRegKeys(name string) []string {
 }
 
 func policyRegKeys(name string) []string {
+	if !honorMachinePolicy() {
+		return nil
+	}
+
 	if keys := securityPolicyRegKeys(name); len(keys) > 0 {
 		return keys
 	}
@@ -748,8 +860,7 @@ func policyRegKeys(name string) []string {
 
 	keys := make([]string, 0, len(prefs.ROOTS))
 	for _, root := range prefs.ROOTS {
-		normalizedRoot := strings.ToUpper(strings.ReplaceAll(strings.TrimSpace(root), `\`, "/"))
-		if strings.Contains(normalizedRoot, "/POLICIES/") {
+		if isPoliciesRoot(root) {
 			keys = append(keys, regkey(name, root))
 		}
 	}
