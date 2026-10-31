@@ -56,12 +56,25 @@ func withPolicyRoot(t *testing.T) {
 
 	oldRoot := prefs.ROOT
 	oldRoots := append([]string(nil), prefs.ROOTS...)
+	oldMachinePolicy := prefs.MACHINE_POLICY_ROOT
+	oldUserPolicy := prefs.USER_POLICY_ROOT
+	oldPolicyRoots := append([]string(nil), prefs.POLICY_ROOTS...)
+	oldHonor := settings.HonorMachinePolicyFn
+
 	prefs.ROOT = testRegistryRoot
+	prefs.MACHINE_POLICY_ROOT = testPolicyRegistryRoot
+	prefs.USER_POLICY_ROOT = testPolicyRegistryRoot + "/user"
+	prefs.POLICY_ROOTS = []string{prefs.MACHINE_POLICY_ROOT, prefs.USER_POLICY_ROOT}
 	prefs.ROOTS = []string{testPolicyRegistryRoot, prefs.ROOT}
+	settings.HonorMachinePolicyFn = func() bool { return true }
 
 	t.Cleanup(func() {
 		prefs.ROOT = oldRoot
 		prefs.ROOTS = oldRoots
+		prefs.MACHINE_POLICY_ROOT = oldMachinePolicy
+		prefs.USER_POLICY_ROOT = oldUserPolicy
+		prefs.POLICY_ROOTS = oldPolicyRoots
+		settings.HonorMachinePolicyFn = oldHonor
 	})
 }
 

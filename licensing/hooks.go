@@ -8,4 +8,5 @@ import (
 func init() {
 	token.AirGappedFn = func() bool { return settings.Global().AirGapped }
 	token.LoadJwksCoseFn = settings.JwksCoseBytes
+	settings.HonorMachinePolicyFn = AllowsMachinePolicy
 }

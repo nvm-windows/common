@@ -51,15 +51,21 @@ func TestLoadAirGappedFromHKLMPolicyOnly(t *testing.T) {
 	oldMachinePolicyRoot := prefs.MACHINE_POLICY_ROOT
 	oldUserPolicyRoot := prefs.USER_POLICY_ROOT
 	oldUserPreferenceRoot := prefs.USER_PREFERENCE_ROOT
+	oldPolicyRoots := append([]string(nil), prefs.POLICY_ROOTS...)
 	oldRoots := append([]string(nil), prefs.ROOTS...)
 	oldRoot := prefs.ROOT
+	oldHonor := settings.HonorMachinePolicyFn
 
 	prefs.MACHINE_POLICY_ROOT = securityPolicyTestRoot + "/airgap_machine_policy"
 	prefs.USER_POLICY_ROOT = securityPolicyTestRoot + "/airgap_user_policy"
 	prefs.USER_PREFERENCE_ROOT = securityPolicyTestRoot + "/airgap_user_preference"
 	prefs.ROOT = prefs.USER_PREFERENCE_ROOT
 	prefs.SECURITY_POLICY_ROOTS = []string{prefs.MACHINE_POLICY_ROOT}
+	prefs.POLICY_ROOTS = []string{prefs.MACHINE_POLICY_ROOT, prefs.USER_POLICY_ROOT}
 	prefs.ROOTS = []string{prefs.MACHINE_POLICY_ROOT, prefs.USER_POLICY_ROOT, prefs.USER_PREFERENCE_ROOT}
+	// AirGapped licensing bootstrap always reads MACHINE_POLICY; preference overrides
+	// from Policies still require Governance.
+	settings.HonorMachinePolicyFn = func() bool { return true }
 
 	t.Cleanup(func() {
 		_ = exec.Command("reg", "delete", `HKCU\Software\NVMTest\security_policy`, "/f").Run()
@@ -67,8 +73,10 @@ func TestLoadAirGappedFromHKLMPolicyOnly(t *testing.T) {
 		prefs.MACHINE_POLICY_ROOT = oldMachinePolicyRoot
 		prefs.USER_POLICY_ROOT = oldUserPolicyRoot
 		prefs.USER_PREFERENCE_ROOT = oldUserPreferenceRoot
+		prefs.POLICY_ROOTS = oldPolicyRoots
 		prefs.ROOTS = oldRoots
 		prefs.ROOT = oldRoot
+		settings.HonorMachinePolicyFn = oldHonor
 		settings.Load(true)
 	})
 
