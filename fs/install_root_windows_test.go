@@ -3,6 +3,7 @@
 package fs
 
 import (
+	"os"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -57,6 +58,8 @@ func TestCheckInstallRootAllowedRejectsProtected(t *testing.T) {
 		filepath.Join(local, "Programs"),
 		filepath.Join(local, "Microsoft"),
 		`C:\`,
+		`C:\nvm`,
+		`D:\soft`,
 		``,
 		`\\server\share\nvm`,
 	}
@@ -76,6 +79,56 @@ func TestCheckInstallRootAllowedRejectsProtected(t *testing.T) {
 	}
 }
 
+func TestCheckInstallRootAllowedNestedUnderDriveOK(t *testing.T) {
+	// D:\tools\nvm\installs — parent is not a drive root, so DataRoot stays off the drive.
+	path := `C:\nvm-tools\installs`
+	if err := CheckInstallRootAllowed(path); err != nil {
+		t.Fatalf("nested path %q: %v", path, err)
+	}
+}
+
+func TestCheckInstallRootAllowedRejectsForeignContents(t *testing.T) {
+	root := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(root, "Git"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := CheckInstallRootAllowed(root); err == nil {
+		t.Fatalf("expected NVM4313 for directory with foreign child")
+	}
+	if IsSafeToDeleteInstallRoot(root) {
+		t.Fatal("foreign contents must not be DelTree-safe")
+	}
+}
+
+func TestCheckInstallRootAllowedAllowsVersionTreesOnly(t *testing.T) {
+	root := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(root, "v22.0.0"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(filepath.Join(root, "v24.11.1-rc.0"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := CheckInstallRootAllowed(root); err != nil {
+		t.Fatalf("version-only root: %v", err)
+	}
+	if !IsSafeToDeleteInstallRoot(root) {
+		t.Fatal("version-only root should be DelTree-safe")
+	}
+}
+
+func TestIsSafeToDeleteInstallRootRejectsMixedContents(t *testing.T) {
+	root := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(root, "v22.0.0"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(filepath.Join(root, "IntelliJ IDEA"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if IsSafeToDeleteInstallRoot(root) {
+		t.Fatal("mixed NVM + foreign contents must not be DelTree-safe")
+	}
+}
+
 func TestInstallRootDeniedMessageListsEvent(t *testing.T) {
 	msg := InstallRootDeniedMessage()
 	if !strings.Contains(msg, "Event code: NVM4313") {
@@ -83,6 +136,9 @@ func TestInstallRootDeniedMessageListsEvent(t *testing.T) {
 	}
 	if !strings.Contains(msg, "Program Files") {
 		t.Fatalf("message missing Program Files list")
+	}
+	if !strings.Contains(msg, "directly under a drive root") {
+		t.Fatalf("message missing drive-root-child guidance: %s", msg)
 	}
 }
 
