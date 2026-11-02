@@ -19,6 +19,8 @@ type installRootProtect struct {
 }
 
 // CheckInstallRootAllowed refuses Node.js storage in OS, profile, or NVM program folders.
+// It also refuses paths whose parent is a drive root (DataRoot would be the drive) and
+// existing directories that already hold non-NVM content (uninstall would wipe siblings).
 func CheckInstallRootAllowed(path string) error {
 	abs, err := normalizeInstallRootPath(path)
 	if err != nil {
@@ -27,12 +29,115 @@ func CheckInstallRootAllowed(path string) error {
 	if installRootDenied(abs, defaultInstallRootProtect()) {
 		return fmt.Errorf("%s\n\nRequested path: %s", InstallRootDeniedMessage(), abs)
 	}
+	// D:\tools → DataRoot D:\ (.shim/proxy next to every other folder on the drive).
+	// Always refuse — even empty — so runtime never lands on a drive root.
+	if HasRiskyDataRootLayout(abs) {
+		return fmt.Errorf("%s\n\nRequested path: %s", InstallRootDeniedMessage(), abs)
+	}
+	if err := rejectForeignInstallRootContents(abs); err != nil {
+		return err
+	}
 	return nil
 }
 
-// IsSafeToDeleteInstallRoot reports whether uninstall may DelTree the storage path.
+// IsSafeToDeleteInstallRoot reports whether uninstall may DelTree the entire storage path.
+// Paths that fail CheckInstallRootAllowed, or that contain non-NVM children, must not be
+// wiped wholesale (surgical version-dir removal only).
 func IsSafeToDeleteInstallRoot(path string) bool {
-	return CheckInstallRootAllowed(path) == nil
+	abs, err := normalizeInstallRootPath(path)
+	if err != nil {
+		return false
+	}
+	if installRootDenied(abs, defaultInstallRootProtect()) {
+		return false
+	}
+	if HasRiskyDataRootLayout(abs) {
+		return false
+	}
+	ok, err := installRootHasOnlyManagedContent(abs)
+	if err != nil || !ok {
+		return false
+	}
+	return true
+}
+
+// rejectForeignInstallRootContents refuses an existing directory that already holds
+// files/folders that are not Node version trees (vX.Y.Z). Missing/empty dirs are fine.
+func rejectForeignInstallRootContents(abs string) error {
+	ok, err := installRootHasOnlyManagedContent(abs)
+	if err != nil {
+		return fmt.Errorf("%s\n\nRequested path: %s\nDetail: %v", InstallRootDeniedMessage(), abs, err)
+	}
+	if !ok {
+		return fmt.Errorf("%s\n\nRequested path: %s", InstallRootDeniedMessage(), abs)
+	}
+	return nil
+}
+
+// installRootHasOnlyManagedContent is true when path is missing, empty, or only contains
+// Node version directories (name starts with "v"). Unmanaged siblings make it false.
+func installRootHasOnlyManagedContent(abs string) (bool, error) {
+	info, err := os.Lstat(abs)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return true, nil
+		}
+		return false, err
+	}
+	if !info.IsDir() {
+		return false, nil
+	}
+	entries, err := os.ReadDir(abs)
+	if err != nil {
+		return false, err
+	}
+	for _, entry := range entries {
+		name := entry.Name()
+		if name == "." || name == ".." {
+			continue
+		}
+		if isManagedInstallRootEntry(name, entry.IsDir()) {
+			continue
+		}
+		return false, nil
+	}
+	return true, nil
+}
+
+func isManagedInstallRootEntry(name string, isDir bool) bool {
+	if !isDir {
+		return false
+	}
+	// Version trees: v22.0.0, v24.11.1-rc.0, etc.
+	if len(name) < 2 || (name[0] != 'v' && name[0] != 'V') {
+		return false
+	}
+	return isVersionDirSuffix(name[1:])
+}
+
+func isVersionDirSuffix(rest string) bool {
+	if rest == "" {
+		return false
+	}
+	dot := false
+	digit := false
+	for i := 0; i < len(rest); i++ {
+		ch := rest[i]
+		switch {
+		case ch >= '0' && ch <= '9':
+			digit = true
+		case ch == '.':
+			dot = true
+		case ch == '-' || ch == '_' || (ch >= 'a' && ch <= 'z') || (ch >= 'A' && ch <= 'Z'):
+			// prerelease / build tags after digits started
+			if !digit {
+				return false
+			}
+		default:
+			return false
+		}
+	}
+	return digit && (dot || len(rest) >= 1)
 }
 
 func normalizeInstallRootPath(path string) (string, error) {

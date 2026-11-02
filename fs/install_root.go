@@ -13,6 +13,8 @@ func InstallRootDeniedMessage() string {
 		"Disallowed locations include:\n" +
 		"- Windows, System32, WinSxS, Program Files, Program Files (x86), ProgramData, WindowsApps, Recycle Bin\n" +
 		"- Drive roots (C:\\)\n" +
+		"- Folders directly under a drive root (D:\\tools) — runtime files would land on the drive root; use D:\\tools\\nvm\\installs\n" +
+		"- Existing folders that already contain non-NVM content (other apps would be deleted on uninstall)\n" +
 		"- Your user profile, AppData, Desktop, Documents, Downloads, Pictures, Videos, Music\n" +
 		"- Start Menu, Startup, LocalAppData\\Programs, LocalAppData\\Microsoft\n" +
 		"- The NVM program folder, .shim, .nodejs, and utils\n" +
