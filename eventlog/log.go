@@ -1,6 +1,7 @@
 package eventlog
 
 import (
+	"bytes"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -27,6 +28,11 @@ var (
 	// sourceName is the human-readable application name populated at build time.
 	// The ETW provider identity itself is stable and does not vary by build.
 	sourceName = providerDisplayName
+
+	// ProductVersion is the NVM for Windows version that wrote the event
+	// (same value as settings.ProductVersion). nvm.exe and sync.exe set this
+	// at startup so every structured Payload includes nvm_version for SIEM.
+	ProductVersion string
 )
 
 type providerState struct {
@@ -219,7 +225,7 @@ func (ev *EventLogger) writeStructured(descriptor eventDescriptor, eventName str
 		return
 	}
 
-	payloadJSON, err := marshalStructuredPayload(payload)
+	payloadJSON, err := marshalStructuredPayload(enrichStructuredPayload(payload))
 	if err != nil {
 		return
 	}
@@ -474,6 +480,73 @@ func scalarFieldDescriptor(value *uint32) eventDataDescriptor {
 		Ptr:  uint64(uintptr(unsafe.Pointer(value))),
 		Size: uint32(unsafe.Sizeof(*value)),
 	}
+}
+
+const nvmVersionPayloadKey = "nvm_version"
+
+// enrichStructuredPayload adds nvm_version when ProductVersion is set and the
+// caller did not already supply that key. Non-object payloads are left unchanged.
+func enrichStructuredPayload(payload any) any {
+	ver := strings.TrimSpace(ProductVersion)
+	if ver == "" {
+		return payload
+	}
+
+	switch value := payload.(type) {
+	case nil:
+		return map[string]any{nvmVersionPayloadKey: ver}
+	case map[string]any:
+		if _, exists := value[nvmVersionPayloadKey]; !exists {
+			value[nvmVersionPayloadKey] = ver
+		}
+		return value
+	case map[string]string:
+		out := make(map[string]any, len(value)+1)
+		for k, v := range value {
+			out[k] = v
+		}
+		if _, exists := out[nvmVersionPayloadKey]; !exists {
+			out[nvmVersionPayloadKey] = ver
+		}
+		return out
+	case json.RawMessage:
+		return injectNVMVersionJSON([]byte(value), ver)
+	case []byte:
+		if json.Valid(value) {
+			return injectNVMVersionJSON(value, ver)
+		}
+		return payload
+	case string:
+		trimmed := strings.TrimSpace(value)
+		if trimmed != "" && json.Valid([]byte(trimmed)) {
+			return injectNVMVersionJSON([]byte(trimmed), ver)
+		}
+		return payload
+	default:
+		encoded, err := json.Marshal(payload)
+		if err != nil || !json.Valid(encoded) {
+			return payload
+		}
+		return injectNVMVersionJSON(encoded, ver)
+	}
+}
+
+func injectNVMVersionJSON(raw []byte, ver string) any {
+	trimmed := bytes.TrimSpace(raw)
+	if len(trimmed) == 0 || trimmed[0] != '{' {
+		return json.RawMessage(raw)
+	}
+	var obj map[string]any
+	if err := json.Unmarshal(trimmed, &obj); err != nil {
+		return json.RawMessage(raw)
+	}
+	if obj == nil {
+		obj = map[string]any{}
+	}
+	if _, exists := obj[nvmVersionPayloadKey]; !exists {
+		obj[nvmVersionPayloadKey] = ver
+	}
+	return obj
 }
 
 func marshalStructuredPayload(payload any) (string, error) {
