@@ -22,11 +22,23 @@ func TestSignVersionScriptsSignsPackageManagerCliEntrypoints(t *testing.T) {
 		t.Fatalf("WriteFile(npm-cli.js): %v", err)
 	}
 
+	pnpmDir := filepath.Join(versionDir, "node_modules", "pnpm", "bin")
+	if err := os.MkdirAll(pnpmDir, 0o755); err != nil {
+		t.Fatalf("MkdirAll(pnpmDir): %v", err)
+	}
+	pnpmPath := filepath.Join(pnpmDir, "pnpm.mjs")
+	if err := os.WriteFile(pnpmPath, []byte("export {}\n"), 0o644); err != nil {
+		t.Fatalf("WriteFile(pnpm.mjs): %v", err)
+	}
+
 	if err := signVersionScripts(dataRoot, versionDir); err != nil {
 		t.Fatalf("signVersionScripts(): %v", err)
 	}
 	if err := verifyDelegatedScript(dataRoot, cliPath); err != nil {
 		t.Fatalf("verifyDelegatedScript(npm-cli.js): %v", err)
+	}
+	if err := verifyDelegatedScript(dataRoot, pnpmPath); err != nil {
+		t.Fatalf("verifyDelegatedScript(pnpm.mjs): %v", err)
 	}
 }
 

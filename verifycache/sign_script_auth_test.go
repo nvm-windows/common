@@ -137,11 +137,19 @@ func TestIsDelegatedLauncherPath(t *testing.T) {
 	versionDir := filepath.Join(dataRoot, "installs", "v24.0.0")
 	ok := filepath.Join(versionDir, "vue.cmd")
 	nested := filepath.Join(versionDir, "node_modules", "npm", "bin", "npm-cli.js")
+	pnpmMjs := filepath.Join(versionDir, "node_modules", "pnpm", "bin", "pnpm.mjs")
+	yarnCjs := filepath.Join(versionDir, "node_modules", "yarn", "bin", "yarn.cjs")
 	if !IsDelegatedLauncherPath(ok) {
 		t.Fatal("version-dir cmd must pass")
 	}
 	if !IsDelegatedLauncherPath(nested) {
 		t.Fatal("nested js under installs must pass")
+	}
+	if !IsDelegatedLauncherPath(pnpmMjs) {
+		t.Fatal("nested pnpm.mjs under installs must pass")
+	}
+	if !IsDelegatedLauncherPath(yarnCjs) {
+		t.Fatal("nested yarn.cjs under installs must pass")
 	}
 	if IsDelegatedLauncherPath(`C:\Temp\evil.cmd`) {
 		t.Fatal("temp cmd must fail")

@@ -91,16 +91,16 @@ func ReadSignScriptPath(r io.Reader) (string, error) {
 	return scriptPath, nil
 }
 
-// IsDelegatedLauncherPath is true for .cmd/.bat/.js files NVM proxy would
-// launch: under the installs root, Yarn Classic global bin, pnpm home bin,
-// or the roaming npm prefix.
+// IsDelegatedLauncherPath is true for .cmd/.bat/.js/.cjs/.mjs files NVM proxy
+// would launch: under the installs root, Yarn Classic global bin, pnpm home
+// bin, or the roaming npm prefix.
 func IsDelegatedLauncherPath(scriptPath string) bool {
 	scriptPath = filepath.Clean(strings.TrimSpace(scriptPath))
 	if scriptPath == "" || scriptPath == "." {
 		return false
 	}
 	ext := strings.ToLower(filepath.Ext(scriptPath))
-	if ext != ".cmd" && ext != ".bat" && ext != ".js" {
+	if ext != ".cmd" && ext != ".bat" && ext != ".js" && ext != ".cjs" && ext != ".mjs" {
 		return false
 	}
 	installRoot := filepath.Clean(strings.TrimSpace(settings.Global().Root))
