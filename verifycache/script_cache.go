@@ -17,9 +17,9 @@ const scriptCacheBucket = "scripts"
 var ErrScriptCacheMiss = errors.New("delegated script cache entry missing")
 
 // SignVersionScripts records TPM-signed hashes for top-level .cmd/.bat launchers,
-// package-manager JS entrypoints (npm-cli.js / npx-cli.js), Authenticode
-// verify-cache entries for top-level .exe helpers, and Yarn Classic / pnpm
-// global bin launchers outside the version directory.
+// package-manager JS entrypoints (npm-cli.js / npx-cli.js / pnpm.mjs / yarn.js),
+// Authenticode verify-cache entries for top-level .exe helpers, and Yarn Classic
+// / pnpm global bin launchers outside the version directory.
 func SignVersionScripts(versionDir string) error {
 	dataRoot, err := dataRootFromVersionDir(versionDir)
 	if err != nil {
@@ -28,10 +28,10 @@ func SignVersionScripts(versionDir string) error {
 	return signVersionScripts(dataRoot, versionDir)
 }
 
-// SignScript force-resigns one delegated .cmd/.bat/.js launcher, bypassing the
-// TrustedModules gate. In-process callers (nvm firewall trust module) use this
-// directly. The --sign-script CLI flag is gated separately: signed proxy parent
-// plus an inherited pipe. Do not treat argv as a trust source.
+// SignScript force-resigns one delegated .cmd/.bat/.js/.cjs/.mjs launcher,
+// bypassing the TrustedModules gate. In-process callers (nvm firewall trust
+// module) use this directly. The --sign-script CLI flag is gated separately:
+// signed proxy parent plus an inherited pipe. Do not treat argv as a trust source.
 func SignScript(scriptPath string) error {
 	scriptPath = strings.TrimSpace(scriptPath)
 	if scriptPath == "" {
@@ -107,6 +107,41 @@ func packageManagerCliRelPaths() []string {
 		"node_modules/npm/bin/npm-cli.js",
 		"node_modules/npm/bin/npx-cli.js",
 		"node_modules/corepack/dist/corepack.js",
+		// Prefer order matches proxy resolvePackageModuleEntry (mjs → cjs → js).
+		"node_modules/pnpm/bin/pnpm.mjs",
+		"node_modules/pnpm/bin/pnpm.cjs",
+		"node_modules/pnpm/bin/pnpm.js",
+		"node_modules/yarn/bin/yarn.js",
+		"node_modules/yarn/bin/yarn.cjs",
+		"node_modules/yarn/bin/yarn.mjs",
+	}
+}
+
+// PackageManagerCliRelPathsFor returns the install-relative JS/CJS/MJS
+// entrypoints that proxy may launch for the given package-manager stem
+// (e.g. "pnpm", "yarn", "npm"). Empty when the stem has no nested CLI path.
+func PackageManagerCliRelPathsFor(name string) []string {
+	switch strings.ToLower(strings.TrimSpace(name)) {
+	case "npm":
+		return []string{"node_modules/npm/bin/npm-cli.js"}
+	case "npx":
+		return []string{"node_modules/npm/bin/npx-cli.js"}
+	case "corepack":
+		return []string{"node_modules/corepack/dist/corepack.js"}
+	case "pnpm":
+		return []string{
+			"node_modules/pnpm/bin/pnpm.mjs",
+			"node_modules/pnpm/bin/pnpm.cjs",
+			"node_modules/pnpm/bin/pnpm.js",
+		}
+	case "yarn", "yarnpkg":
+		return []string{
+			"node_modules/yarn/bin/yarn.js",
+			"node_modules/yarn/bin/yarn.cjs",
+			"node_modules/yarn/bin/yarn.mjs",
+		}
+	default:
+		return nil
 	}
 }
 
