@@ -17,6 +17,7 @@ type Settings struct {
 	AutoInstall                   bool     `cfg:"auto_install" reg:"AutoInstall" default:"false" help:"Automatically install missing auto-detected version (node shim, proxy npm/npx/yarn/pnpm, pin)."`
 	AutoInstallPrompt             bool     `cfg:"auto_install_prompt" reg:"AutoInstallPrompt" default:"true" help:"Prompt before automatically installing missing auto-detected version (node shim, proxy, pin)."`
 	DisableUpgrade                bool     `cfg:"disable_upgrade" reg:"DisableUpgrade" default:"false" help:"Disable nvm upgrades." hidden:"true"`
+	DisableSyncSelfUpdate         bool     `cfg:"disable_sync_self_update" reg:"DisableSyncSelfUpdate" default:"false" help:"Disable automatic sync.exe self-updates from GitHub release assets." hidden:"true"`
 	AllowInsecureDownloads        bool     `cfg:"allow_insecure_downloads" reg:"AllowInsecureDownloads" default:"false" help:"Allow expired/invalid SSL certificates when downloading assets." hidden:"false"`
 	AllowDownloadCacheRemoval     bool     `cfg:"allow_download_cache_removal" reg:"AllowDownloadCacheDelete" default:"true" help:"Allow removing cached downloads."`
 	AutoInstallModuleList         []string `cfg:"auto_installed_modules" reg:"AutoInstallModuleList" default:"" help:"Comma-delimited list of global npm modules to automatically install with new Node.js versions."`
