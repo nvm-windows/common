@@ -273,6 +273,10 @@ func ResolveActiveVersion(cwd ...string) (string, error) {
 		for _, file := range cfg.AutoDetect {
 			file = filepath.Join(wd, file)
 
+			if detectFileIsReparse(file) {
+				continue
+			}
+
 			if _, err := os.Stat(file); err == nil {
 				if raw, err := os.ReadFile(file); err == nil {
 					if strings.ToLower(filepath.Ext(file)) == ".json" {
