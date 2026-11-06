@@ -18,10 +18,12 @@ const (
 )
 
 var (
-	airGappedFn = func() bool { return settings.Global().AirGapped }
-	verifiedAtFn = func() string { return strings.TrimSpace(settings.Global().LastLicenseVerifiedAt) }
+	// Peek only — never settings.Global() here. Load → honorMachinePolicy →
+	// AllowsMachinePolicy → commercialClaims → CommercialTrustOK would recurse.
+	airGappedFn = func() bool { return settings.PeekAirGapped() }
+	verifiedAtFn = func() string { return settings.PeekLastLicenseVerifiedAt() }
 	verifyAttemptAtFn = func() string {
-		return strings.TrimSpace(settings.Global().LastLicenseVerifyAttemptAt)
+		return settings.PeekLastLicenseVerifyAttemptAt()
 	}
 	putSettingFn   = settings.Put
 	nowFn          = time.Now
