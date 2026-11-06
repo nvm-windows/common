@@ -118,6 +118,16 @@ func seedLicensingFromMachineHives() {
 				globalSettings.AirGapped = v != 0
 			}
 		}
+		if raw, ok := values["LastLicenseVerifiedAt"]; ok && strings.TrimSpace(globalSettings.LastLicenseVerifiedAt) == "" {
+			if normalized, ok := normalizeRegistryStringValue(raw); ok {
+				globalSettings.LastLicenseVerifiedAt = normalized
+			}
+		}
+		if raw, ok := values["LastLicenseVerifyAttemptAt"]; ok && strings.TrimSpace(globalSettings.LastLicenseVerifyAttemptAt) == "" {
+			if normalized, ok := normalizeRegistryStringValue(raw); ok {
+				globalSettings.LastLicenseVerifyAttemptAt = normalized
+			}
+		}
 	}
 }
 
@@ -585,6 +595,22 @@ func Global() Settings {
 // Used by license gates during Load (seedLicensing runs before preference merge).
 func PeekAccessToken() string {
 	return strings.TrimSpace(globalSettings.AccessToken)
+}
+
+// PeekAirGapped returns the in-memory AirGapped flag without triggering Load.
+// CommercialTrustOK must not call Global() from honorMachinePolicy mid-Load.
+func PeekAirGapped() bool {
+	return globalSettings.AirGapped
+}
+
+// PeekLastLicenseVerifiedAt returns the in-memory verify stamp without Load.
+func PeekLastLicenseVerifiedAt() string {
+	return strings.TrimSpace(globalSettings.LastLicenseVerifiedAt)
+}
+
+// PeekLastLicenseVerifyAttemptAt returns the in-memory attempt stamp without Load.
+func PeekLastLicenseVerifyAttemptAt() string {
+	return strings.TrimSpace(globalSettings.LastLicenseVerifyAttemptAt)
 }
 
 // expandEnvVars expands Windows-style %VAR% environment variable references in path.
