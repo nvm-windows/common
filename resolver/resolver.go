@@ -34,9 +34,10 @@ func Find(version string) (string, string, error) {
 		v = resolved
 	}
 
-	// Strip prerelease/build metadata for matching purposes.
-	// Prereleases will not be supported until the new Node.js schedule is
-	// implemented with Alpha releases.
+	// Strip prerelease/build metadata for partial/exact matching. Explicit
+	// prerelease installs are not supported yet (reserved aliases alpha/beta);
+	// `latest` already skips prerelease rows so this strip does not invent a
+	// missing GA tag like 27.0.0 from 27.0.0-alpha.0.0.0 (nvm#1554).
 	v = strings.Split(v, "-")[0]
 
 	// Exact x.y.z is already concrete (typed by the user, or after alias
@@ -120,10 +121,7 @@ func alias(version string) (string, error) {
 		if err != nil {
 			return "", err
 		}
-		if len(all) == 0 {
-			return "", fmt.Errorf("no versions found")
-		}
-		return all[0][0], nil
+		return latestStable(all)
 	}
 
 	if v == "lts" {
@@ -165,6 +163,27 @@ func alias(version string) (string, error) {
 	}
 
 	return "", fmt.Errorf("unknown alias: %s", version)
+}
+
+// latestStable returns the newest index.tab row that is not a prerelease
+// (no '-' in the version). Node publishes alphas at the head of index.tab
+// before the matching GA exists, so taking all[0] would resolve latest to a
+// stripped tag that 404s on SHASUMS256.txt (nvm#1554 / nodejs/node#67367).
+func latestStable(versions [][]string) (string, error) {
+	if len(versions) == 0 {
+		return "", fmt.Errorf("no versions found")
+	}
+	for _, ver := range versions {
+		if len(ver) == 0 {
+			continue
+		}
+		tag := strings.TrimPrefix(strings.TrimSpace(ver[0]), "v")
+		if tag == "" || strings.Contains(tag, "-") {
+			continue
+		}
+		return tag, nil
+	}
+	return "", fmt.Errorf("no stable versions found")
 }
 
 // Resolve returns the best concrete Node.js version for the given input.
