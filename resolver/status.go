@@ -114,7 +114,7 @@ func resolveInstalledVersion(requestedVersion string, resolvePartialRemotely boo
 }
 
 // resolveLocalOnlyAlias maps default/current and user-defined aliases without
-// touching the network. latest/lts still require the catalog via Find.
+// touching the network. latest/lts/alpha still require the catalog via Find.
 func resolveLocalOnlyAlias(version string) (string, bool) {
 	v := strings.ToLower(strings.TrimSpace(version))
 	if v == "" {
@@ -127,7 +127,7 @@ func resolveLocalOnlyAlias(version string) (string, bool) {
 		}
 		return active, true
 	}
-	if v == "latest" || v == "lts" || strings.HasPrefix(v, "lts/") {
+	if v == "latest" || v == "lts" || v == "alpha" || strings.HasPrefix(v, "lts/") {
 		return "", false
 	}
 

@@ -12,42 +12,68 @@ import (
 	semver "github.com/Masterminds/semver/v3"
 )
 
+// LatestIncludesPrerelease reports whether the reserved "latest" alias should
+// resolve to the absolute tip of index.tab (including prereleases). Community
+// builds leave this nil/false. Certified Governance builds may set it when
+// HKLM LatestIncludesPrerelease=1.
+var LatestIncludesPrerelease func() bool
+
+// OnLegacyLatestResolved is invoked when "latest" resolves under
+// LatestIncludesPrerelease. Certified builds use it for structured warnings.
+var OnLegacyLatestResolved func(resolved string)
+
 // FindVersion returns the best matching version for a given version string, along with its npm version.
 // The input version string can be a full version (e.g. "v16.13.0"), a major.minor (e.g. "16.13"), or just a major version (e.g. "16").
-// Aliases "latest", "lts", and "lts/<name>" are also accepted.
+// Aliases "latest", "lts", "lts/<name>", and "alpha" are also accepted.
 // The function will attempt to find the best match based on the available versions.
 func Find(version string) (string, string, error) {
 	// Resolve aliases before normal version parsing.
 	lower := strings.ToLower(strings.TrimSpace(version))
-	v := strings.TrimPrefix(strings.TrimSpace(version), "v")
+	raw := strings.TrimPrefix(strings.TrimSpace(version), "v")
+	v := raw
 	isUserAlias := false
+	preservedPrerelease := ""
 
-	if _, err := strconv.Atoi(strings.Split(v, ".")[0]); err != nil {
+	if _, err := strconv.Atoi(strings.Split(strings.Split(v, "-")[0], ".")[0]); err != nil {
 		isUserAlias = true
 	}
 
-	if isUserAlias || lower == "latest" || lower == "lts" || strings.HasPrefix(lower, "lts/") {
+	if isUserAlias || lower == "latest" || lower == "lts" || lower == "alpha" || strings.HasPrefix(lower, "lts/") {
 		resolved, err := alias(lower)
 		if err != nil {
 			return "", "", err
 		}
 		v = resolved
+		if IsUnstableVersion(resolved) {
+			// Alias already produced a concrete prerelease tag (alpha / legacy latest).
+			return CanonicalVersion(resolved), "", nil
+		}
+	} else if IsUnstableVersion(raw) {
+		// Explicit prerelease/exact tag typed by the user — keep the full tag.
+		preservedPrerelease = CanonicalVersion(raw)
 	}
 
-	// Strip prerelease/build metadata for partial/exact matching. Explicit
-	// prerelease installs are not supported yet (reserved aliases alpha/beta);
+	// Strip prerelease/build metadata for partial numeric matching only.
 	// `latest` already skips prerelease rows so this strip does not invent a
 	// missing GA tag like 27.0.0 from 27.0.0-alpha.0.0.0 (nvm#1554).
-	v = strings.Split(v, "-")[0]
+	core := strings.Split(v, "-")[0]
+
+	if preservedPrerelease != "" {
+		// Exact prerelease: skip catalog so air-gapped installs work.
+		if isExactVersionSpec(core) {
+			return preservedPrerelease, "", nil
+		}
+		core = NormalizeVersion(preservedPrerelease)
+	}
 
 	// Exact x.y.z is already concrete (typed by the user, or after alias
 	// resolution). Skip index.tab so air-gapped `nvm install 24.22.1` can
 	// use a local archive without DNS.
-	if isExactVersionSpec(v) {
-		return NormalizeVersion(v), "", nil
+	if isExactVersionSpec(core) && preservedPrerelease == "" {
+		return NormalizeVersion(core), "", nil
 	}
 
-	parts := strings.Split(v, ".")
+	parts := strings.Split(core, ".")
 
 	major := parts[0]
 
@@ -70,20 +96,33 @@ func Find(version string) (string, string, error) {
 		return "", "", fmt.Errorf("version %s not found", version)
 	}
 
+	if preservedPrerelease != "" {
+		for _, row := range versions {
+			if strings.EqualFold(CanonicalVersion(row[0]), preservedPrerelease) {
+				return CanonicalVersion(row[0]), row[2], nil
+			}
+		}
+		return "", "", fmt.Errorf("version %s not found", version)
+	}
+
 	if minor != "" {
-		for _, v := range versions {
-			if strings.HasPrefix(v[0], major+"."+minor+".") {
+		for _, row := range versions {
+			tag := CanonicalVersion(row[0])
+			if strings.HasPrefix(tag, major+"."+minor+".") {
 				if patch == "" {
-					return v[0], v[2], nil
+					return tag, row[2], nil
 				}
-				if strings.EqualFold(v[0], major+"."+minor+"."+patch) {
-					return v[0], v[2], nil
+				if strings.EqualFold(NormalizeVersion(tag), major+"."+minor+"."+patch) && !IsUnstableVersion(tag) {
+					return tag, row[2], nil
+				}
+				if strings.EqualFold(tag, major+"."+minor+"."+patch) {
+					return tag, row[2], nil
 				}
 			}
 		}
 	}
 
-	return versions[0][0], versions[0][2], nil
+	return CanonicalVersion(versions[0][0]), versions[0][2], nil
 }
 
 // LTSName returns the LTS codename for the given version (e.g. "Jod", "Iron"),
@@ -104,7 +143,7 @@ func LTSName(version string) string {
 }
 
 // alias resolves a named alias to a concrete version string.
-// Supported aliases: "latest", "lts", "lts/<name>", "default", "current".
+// Supported aliases: "latest", "lts", "lts/<name>", "alpha", "default", "current".
 func alias(version string) (string, error) {
 	v := strings.ToLower(strings.TrimSpace(version))
 
@@ -121,7 +160,25 @@ func alias(version string) (string, error) {
 		if err != nil {
 			return "", err
 		}
+		if LatestIncludesPrerelease != nil && LatestIncludesPrerelease() {
+			tag, err := latestTip(all)
+			if err != nil {
+				return "", err
+			}
+			if OnLegacyLatestResolved != nil {
+				OnLegacyLatestResolved(tag)
+			}
+			return tag, nil
+		}
 		return latestStable(all)
+	}
+
+	if v == "alpha" {
+		all, err := List()
+		if err != nil {
+			return "", err
+		}
+		return latestAlpha(all)
 	}
 
 	if v == "lts" {
@@ -177,13 +234,50 @@ func latestStable(versions [][]string) (string, error) {
 		if len(ver) == 0 {
 			continue
 		}
-		tag := strings.TrimPrefix(strings.TrimSpace(ver[0]), "v")
+		tag := CanonicalVersion(ver[0])
 		if tag == "" || strings.Contains(tag, "-") {
 			continue
 		}
 		return tag, nil
 	}
 	return "", fmt.Errorf("no stable versions found")
+}
+
+// latestTip returns the absolute newest index.tab row, including prereleases.
+// Used when Governance LatestIncludesPrerelease is enabled.
+func latestTip(versions [][]string) (string, error) {
+	if len(versions) == 0 {
+		return "", fmt.Errorf("no versions found")
+	}
+	for _, ver := range versions {
+		if len(ver) == 0 {
+			continue
+		}
+		tag := CanonicalVersion(ver[0])
+		if tag == "" {
+			continue
+		}
+		return tag, nil
+	}
+	return "", fmt.Errorf("no versions found")
+}
+
+// latestAlpha returns the newest index.tab row whose version contains "-alpha".
+func latestAlpha(versions [][]string) (string, error) {
+	if len(versions) == 0 {
+		return "", fmt.Errorf("no versions found")
+	}
+	for _, ver := range versions {
+		if len(ver) == 0 {
+			continue
+		}
+		tag := CanonicalVersion(ver[0])
+		if tag == "" || !IsAlphaVersion(tag) {
+			continue
+		}
+		return tag, nil
+	}
+	return "", fmt.Errorf("no alpha versions found")
 }
 
 // Resolve returns the best concrete Node.js version for the given input.
@@ -210,7 +304,7 @@ func Resolve(version string) (string, error) {
 	}
 
 	// Handle reserved aliases and plain/partial versions via Find, which covers
-	// "latest", "lts", "lts/<name>", "18", "18.20", "18.20.1", "v18.20.1".
+	// "latest", "lts", "lts/<name>", "alpha", "18", "18.20", "18.20.1", "v18.20.1".
 	resolved, _, err := Find(v)
 	if err == nil {
 		return resolved, nil
