@@ -19,6 +19,25 @@ func NormalizeVersion(version string) string {
 	return strings.Split(v, "-")[0]
 }
 
+// CanonicalVersion strips a leading "v" and lowercases, but keeps prerelease
+// and build metadata. Examples: "v27.0.0-alpha.0.0.0" → "27.0.0-alpha.0.0.0".
+func CanonicalVersion(version string) string {
+	v := strings.TrimSpace(version)
+	return strings.TrimPrefix(strings.ToLower(v), "v")
+}
+
+// IsUnstableVersion reports whether version carries prerelease/build metadata
+// (any '-' after the core x.y.z tag).
+func IsUnstableVersion(version string) bool {
+	return strings.Contains(CanonicalVersion(version), "-")
+}
+
+// IsAlphaVersion reports whether version is a Node.js alpha prerelease
+// (canonical form contains "-alpha").
+func IsAlphaVersion(version string) bool {
+	return strings.Contains(CanonicalVersion(version), "-alpha")
+}
+
 // ScanInstalled returns all installed Node.js versions from the configured
 // install root, sorted in descending semver order. Only directories that
 // contain node.exe are included.
@@ -114,12 +133,14 @@ func LatestInstalledMatch(spec string, installed ...[]string) (string, bool) {
 	return "", false
 }
 
-// CheckInstalledLocally reports whether an exact x.y.z version is present on
-// disk without making any network requests. Returns (canonicalVersion, true) on
-// success. Non-exact specs (partial, aliases) always return ("", false).
+// CheckInstalledLocally reports whether an exact x.y.z (or x.y.z-prerelease)
+// version is present on disk without making any network requests. Returns
+// (canonicalVersion, true) on success. Non-exact specs (partial, aliases)
+// always return ("", false).
 func CheckInstalledLocally(spec string) (string, bool) {
-	normalized := NormalizeVersion(spec)
-	parts := strings.Split(normalized, ".")
+	canonical := CanonicalVersion(spec)
+	core := NormalizeVersion(canonical)
+	parts := strings.Split(core, ".")
 	if len(parts) != 3 {
 		return "", false
 	}
@@ -133,11 +154,11 @@ func CheckInstalledLocally(spec string) (string, bool) {
 	}
 
 	root := settings.Expand(settings.Global().Root)
-	nodeExe := filepath.Join(root, "v"+normalized, "node.exe")
+	nodeExe := filepath.Join(root, "v"+canonical, "node.exe")
 	if _, err := os.Stat(nodeExe); err != nil {
 		return "", false
 	}
-	return normalized, true
+	return canonical, true
 }
 
 func isPartialVersionSpec(version string) bool {
@@ -175,7 +196,7 @@ func isExactVersionSpec(version string) bool {
 }
 
 // isNamedSpecifier reports CLI tokens that must be resolved through Find
-// (latest, lts, default, current, user aliases) rather than local-only
+// (latest, lts, alpha, default, current, user aliases) rather than local-only
 // partial matching.
 func isNamedSpecifier(version string) bool {
 	if isPartialVersionSpec(version) || isExactVersionSpec(version) {
