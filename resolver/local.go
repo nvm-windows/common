@@ -80,6 +80,12 @@ func ScanInstalled() []string {
 // spec (major only, e.g. "18", or major.minor, e.g. "18.1"). The second return
 // value is false when no match is found or spec is not a valid partial.
 //
+// Non-prerelease installs always beat prereleases for the same partial spec, so
+// `nvm use 27` prefers 27.0.x over 27.1.0-alpha even when the alpha is newer by
+// plain semver. When no stable match exists, the newest matching prerelease is
+// returned (alpha-only majors). The returned string is canonical (keeps
+// prerelease tags when that is the only match).
+//
 // An optional pre-scanned list may be passed to avoid a redundant disk scan;
 // if omitted, ScanInstalled() is called internally.
 func LatestInstalledMatch(spec string, installed ...[]string) (string, bool) {
@@ -113,11 +119,13 @@ func LatestInstalledMatch(spec string, installed ...[]string) (string, bool) {
 		minor = parts[1]
 	}
 
-	// ScanInstalled returns versions in descending order, so the first match is
-	// the latest installed version satisfying the spec.
+	// ScanInstalled is descending semver. Prefer the first stable match; remember
+	// the first prerelease as fallback when no GA exists under the partial.
+	fallback := ""
 	for _, version := range list {
-		v := NormalizeVersion(version)
-		vparts := strings.Split(v, ".")
+		canonical := CanonicalVersion(version)
+		core := NormalizeVersion(canonical)
+		vparts := strings.Split(core, ".")
 		if len(vparts) < 3 {
 			continue
 		}
@@ -127,9 +135,35 @@ func LatestInstalledMatch(spec string, installed ...[]string) (string, bool) {
 		if minor != "" && vparts[1] != minor {
 			continue
 		}
-		return v, true
+		if !IsUnstableVersion(canonical) {
+			return canonical, true
+		}
+		if fallback == "" {
+			fallback = canonical
+		}
 	}
+	if fallback != "" {
+		return fallback, true
+	}
+	return "", false
+}
 
+// LatestInstalledAlpha returns the newest installed Node.js alpha prerelease
+// (canonical tag containing "-alpha"), or ("", false) when none are installed.
+// Used so `alpha` stays restricted to alpha builds and never picks GA/rc.
+func LatestInstalledAlpha(installed ...[]string) (string, bool) {
+	var list []string
+	if len(installed) > 0 {
+		list = installed[0]
+	} else {
+		list = ScanInstalled()
+	}
+	for _, version := range list {
+		canonical := CanonicalVersion(version)
+		if IsAlphaVersion(canonical) {
+			return canonical, true
+		}
+	}
 	return "", false
 }
 
