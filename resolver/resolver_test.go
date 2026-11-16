@@ -110,3 +110,102 @@ func TestCanonicalVersion(t *testing.T) {
 		t.Fatalf("CanonicalVersion = %q", got)
 	}
 }
+
+func TestBestPartialCatalogMatchPrefersStableOverNewerAlpha(t *testing.T) {
+	// Newer alpha first (index.tab tip), older GA second — partial "27" must pick GA.
+	rows := [][]string{
+		{"27.1.0-alpha.0.0.0", "2027-05-01", "12.2.0", "", "-"},
+		{"27.0.5", "2027-04-15", "12.1.0", "", "-"},
+		{"27.0.0-alpha.0.1.0", "2027-01-10", "12.0.0", "", "-"},
+		{"26.13.0", "2026-10-28", "11.20.0", "Lithium", "-"},
+	}
+	got, npm, ok := bestPartialCatalogMatch(rows, "27", "", "")
+	if !ok {
+		t.Fatal("expected a match for major 27")
+	}
+	if got != "27.0.5" {
+		t.Fatalf("bestPartialCatalogMatch(27) = %q, want 27.0.5 (stable over newer alpha)", got)
+	}
+	if npm != "12.1.0" {
+		t.Fatalf("npm = %q, want 12.1.0", npm)
+	}
+}
+
+func TestBestPartialCatalogMatchFallsBackToPrerelease(t *testing.T) {
+	rows := [][]string{
+		{"27.0.0-alpha.0.1.0", "2027-01-10", "12.0.1", "", "-"},
+		{"27.0.0-alpha.0.0.0", "2027-01-01", "12.0.0", "", "-"},
+		{"26.13.0", "2026-10-28", "11.20.0", "Lithium", "-"},
+	}
+	got, _, ok := bestPartialCatalogMatch(rows, "27", "", "")
+	if !ok {
+		t.Fatal("expected prerelease fallback for alpha-only major 27")
+	}
+	if got != "27.0.0-alpha.0.1.0" {
+		t.Fatalf("bestPartialCatalogMatch(27) = %q, want newest alpha", got)
+	}
+}
+
+func TestBestPartialCatalogMatchMajorMinorPrefersStable(t *testing.T) {
+	rows := [][]string{
+		{"27.0.1-alpha.1", "2027-02-01", "12.0.2", "", "-"},
+		{"27.0.0", "2027-01-15", "12.0.0", "", "-"},
+		{"27.0.0-alpha.0.0.0", "2027-01-01", "12.0.0", "", "-"},
+	}
+	got, _, ok := bestPartialCatalogMatch(rows, "27", "0", "")
+	if !ok {
+		t.Fatal("expected match for 27.0")
+	}
+	if got != "27.0.0" {
+		t.Fatalf("bestPartialCatalogMatch(27.0) = %q, want 27.0.0", got)
+	}
+}
+
+func TestLatestInstalledMatchPrefersStableOverNewerAlpha(t *testing.T) {
+	installed := []string{
+		"27.1.0-alpha.0.0.0",
+		"27.0.5",
+		"27.0.0-alpha.0.1.0",
+		"26.13.0",
+	}
+	got, ok := LatestInstalledMatch("27", installed)
+	if !ok {
+		t.Fatal("expected installed match for 27")
+	}
+	if got != "27.0.5" {
+		t.Fatalf("LatestInstalledMatch(27) = %q, want 27.0.5", got)
+	}
+}
+
+func TestLatestInstalledMatchFallsBackToPrerelease(t *testing.T) {
+	installed := []string{"27.0.0-alpha.0.1.0", "27.0.0-alpha.0.0.0", "26.13.0"}
+	got, ok := LatestInstalledMatch("27", installed)
+	if !ok {
+		t.Fatal("expected prerelease fallback")
+	}
+	if got != "27.0.0-alpha.0.1.0" {
+		t.Fatalf("LatestInstalledMatch(27) = %q, want newest alpha tag (canonical)", got)
+	}
+}
+
+func TestLatestInstalledAlphaIgnoresStableAndRC(t *testing.T) {
+	installed := []string{
+		"27.0.0",
+		"27.0.0-rc.1",
+		"27.0.0-alpha.0.1.0",
+		"26.0.0-alpha.1",
+	}
+	got, ok := LatestInstalledAlpha(installed)
+	if !ok {
+		t.Fatal("expected an installed alpha")
+	}
+	if got != "27.0.0-alpha.0.1.0" {
+		t.Fatalf("LatestInstalledAlpha = %q, want 27.0.0-alpha.0.1.0", got)
+	}
+}
+
+func TestLatestInstalledAlphaNone(t *testing.T) {
+	if _, ok := LatestInstalledAlpha([]string{"27.0.0", "27.0.0-rc.1"}); ok {
+		t.Fatal("expected no alpha match")
+	}
+}

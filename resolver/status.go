@@ -92,6 +92,12 @@ func resolveInstalledVersion(requestedVersion string, resolvePartialRemotely boo
 	if isNamedSpecifier(requestedVersion) {
 		version, _, err := findVersionFn(requestedVersion)
 		if err != nil {
+			// Offline / catalog failure: `alpha` may still resolve from disk.
+			if strings.EqualFold(strings.TrimSpace(requestedVersion), "alpha") {
+				if local, ok := LatestInstalledAlpha(); ok {
+					return true, local, nil
+				}
+			}
 			return false, "", err
 		}
 		if v, ok := checkInstalledLocallyFn(version); ok {

@@ -105,24 +105,58 @@ func Find(version string) (string, string, error) {
 		return "", "", fmt.Errorf("version %s not found", version)
 	}
 
-	if minor != "" {
-		for _, row := range versions {
-			tag := CanonicalVersion(row[0])
-			if strings.HasPrefix(tag, major+"."+minor+".") {
-				if patch == "" {
-					return tag, row[2], nil
-				}
-				if strings.EqualFold(NormalizeVersion(tag), major+"."+minor+"."+patch) && !IsUnstableVersion(tag) {
-					return tag, row[2], nil
-				}
-				if strings.EqualFold(tag, major+"."+minor+"."+patch) {
-					return tag, row[2], nil
-				}
-			}
+	if tag, npm, ok := bestPartialCatalogMatch(versions, major, minor, patch); ok {
+		return tag, npm, nil
+	}
+	return "", "", fmt.Errorf("version %s not found", version)
+}
+
+// bestPartialCatalogMatch picks the best index.tab row for a partial/exact core
+// spec. Non-prerelease rows always beat prereleases (so 27.0.x wins over
+// 27.1.0-alpha for `Find("27")`). Catalog order is newest-first; within the
+// winning stability class the first match wins. When no stable match exists,
+// the newest matching prerelease is returned.
+func bestPartialCatalogMatch(versions [][]string, major, minor, patch string) (string, string, bool) {
+	fallbackTag := ""
+	fallbackNpm := ""
+	for _, row := range versions {
+		if len(row) == 0 {
+			continue
+		}
+		tag := CanonicalVersion(row[0])
+		if tag == "" {
+			continue
+		}
+		core := NormalizeVersion(tag)
+		parts := strings.Split(core, ".")
+		if len(parts) < 3 {
+			continue
+		}
+		if parts[0] != major {
+			continue
+		}
+		if minor != "" && parts[1] != minor {
+			continue
+		}
+		if patch != "" && parts[2] != patch {
+			continue
+		}
+		npm := ""
+		if len(row) > 2 {
+			npm = row[2]
+		}
+		if !IsUnstableVersion(tag) {
+			return tag, npm, true
+		}
+		if fallbackTag == "" {
+			fallbackTag = tag
+			fallbackNpm = npm
 		}
 	}
-
-	return CanonicalVersion(versions[0][0]), versions[0][2], nil
+	if fallbackTag != "" {
+		return fallbackTag, fallbackNpm, true
+	}
+	return "", "", false
 }
 
 // LTSName returns the LTS codename for the given version (e.g. "Jod", "Iron"),
