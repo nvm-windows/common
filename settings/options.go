@@ -2,6 +2,7 @@ package settings
 
 type Settings struct {
 	Mode                          string   `cfg:"mode" reg:"OperatingMode" default:"shim" enum:"shim,link" help:"Specifies how Node.js commands and versions are managed, either through shim-based routing or direct junction/symlink linking."`
+	RequireActivationSymlinks     bool     `cfg:"require_activation_symlinks" reg:"RequireActivationSymlinks" default:"false" help:"Certified: when true, .nodejs and .link/nodejs activation links are created as symlinks (not junctions) so OpenSSH Redirection Guard can traverse PATH. Requires Developer Mode or SeCreateSymbolicLinkPrivilege (GPO). Community default off."`
 	Root                          string   `cfg:"root" reg:"InstallRoot" default:"%LOCALAPPDATA%\\Author Software\\nvm\\installs" help:"Root directory where Node.js versions are installed. Must be a dedicated folder; Windows, Program Files, profile, and NVM program folders are rejected (NVM4313)."`
 	Proxy                         string   `cfg:"proxy" reg:"Proxy" help:"Proxy URL used to download assets." hidden:"true"`
 	ProxyAuth                     string   `cfg:"proxy_auth" reg:"ProxyAuth" help:"Authentication value for the proxy, such as username:password or Bearer <token>." hidden:"true"`
