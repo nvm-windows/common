@@ -158,6 +158,13 @@ func readRegisteredDisplayName(appID string) string {
 	return strings.TrimSpace(value)
 }
 
+// HelpEnablingSymlinks sends the Developer Mode toast used when symlink
+// creation fails (link mode UNC, shim hardlink→symlink fallback, etc.).
+func HelpEnablingSymlinks(appID string) error {
+	return Send(appID, "Help Enabling Symlinks", "Developer Mode is required to use symlinks.",
+		Action{Label: "Open Developer Settings", URL: "ms-settings:developers"})
+}
+
 // Send displays a Windows toast notification.
 // title may be empty (single-line notification). appID is the AUMID.
 // Optional actions are rendered as protocol-handler buttons.
