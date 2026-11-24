@@ -16,7 +16,10 @@ import (
 func setupVerifyCacheTestProfile(t *testing.T) string {
 	t.Helper()
 
-	dataRoot := t.TempDir()
+	// Mirror production: DataRoot = %LOCALAPPDATA%\Author Software\nvm.
+	localAppData := t.TempDir()
+	t.Setenv("LOCALAPPDATA", localAppData)
+	dataRoot := filepath.Join(localAppData, "Author Software", "nvm")
 	installRoot := filepath.Join(dataRoot, "installs")
 	if err := os.MkdirAll(installRoot, 0o755); err != nil {
 		t.Fatalf("MkdirAll(installRoot) error = %v", err)

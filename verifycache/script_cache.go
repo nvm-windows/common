@@ -3,6 +3,7 @@
 package verifycache
 
 import (
+	"common/fs"
 	"common/registry"
 	"errors"
 	"fmt"
@@ -355,6 +356,9 @@ func verifyStoredScriptSignature(dataRoot string, entry map[string]interface{}) 
 }
 
 func dataRootFromVersionDir(versionDir string) (string, error) {
+	if root, ok := fs.UserDataRoot(); ok {
+		return root, nil
+	}
 	versionDir = filepath.Clean(strings.TrimSpace(versionDir))
 	installRoot := filepath.Dir(versionDir)
 	dataRoot := filepath.Dir(installRoot)

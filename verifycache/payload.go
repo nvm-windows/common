@@ -1,6 +1,7 @@
 package verifycache
 
 import (
+	"common/fs"
 	"common/settings"
 	"crypto/sha256"
 	"encoding/hex"
@@ -115,6 +116,9 @@ func canonicalScriptPayload(
 }
 
 func dataRootFromSettings() (string, error) {
+	if root, ok := fs.UserDataRoot(); ok {
+		return root, nil
+	}
 	installRoot := strings.TrimSpace(settings.Global().Root)
 	if installRoot == "" {
 		return "", fmt.Errorf("install root is not configured")
@@ -127,6 +131,9 @@ func dataRootFromSettings() (string, error) {
 }
 
 func dataRootFromNodePath(nodeExePath string) (string, error) {
+	if root, ok := fs.UserDataRoot(); ok {
+		return root, nil
+	}
 	installDir := filepath.Dir(nodeExePath)
 	installRoot := filepath.Dir(installDir)
 	dataRoot := filepath.Dir(installRoot)

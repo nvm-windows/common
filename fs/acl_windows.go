@@ -55,7 +55,10 @@ func IsRiskyManagedPath(path string) bool {
 	return daclAllowsCrossPrincipalWrite(path)
 }
 
-// HasRiskyDataRootLayout reports when runtime data directories would live on a drive root.
+// HasRiskyDataRootLayout reports when InstallRoot sits directly under a drive
+// root (e.g. C:\nvm). NVM4313 refuses those paths. Runtime DataRoot no longer
+// follows parent(InstallRoot) — it stays under %LOCALAPPDATA%\Author Software\nvm —
+// but drive-adjacent storage remains unsafe for version trees.
 func HasRiskyDataRootLayout(installRoot string) bool {
 	installRoot = filepath.Clean(installRoot)
 	if installRoot == "" || installRoot == "." {
@@ -64,7 +67,7 @@ func HasRiskyDataRootLayout(installRoot string) bool {
 	return isDriveRoot(filepath.Dir(installRoot))
 }
 
-// WarnRiskyRootLayout prints guidance when InstallRoot leaves data on a drive root.
+// WarnRiskyRootLayout prints guidance when InstallRoot is drive-adjacent.
 func WarnRiskyRootLayout(installRoot string) {
 	if !HasRiskyDataRootLayout(installRoot) {
 		return
@@ -72,7 +75,7 @@ func WarnRiskyRootLayout(installRoot string) {
 	parent := filepath.Dir(filepath.Clean(installRoot))
 	fmt.Fprintf(
 		os.Stderr,
-		"warning: install root %q places NVM runtime data on drive root %q. Prefer a nested path such as %s\\installs.\n",
+		"warning: install root %q is directly under drive root %q (NVM4313). Prefer a nested path such as %s\\nvm\\installs. Runtime dirs stay under %%LOCALAPPDATA%%\\Author Software\\nvm.\n",
 		installRoot,
 		parent,
 		parent,

@@ -189,6 +189,9 @@ func GetCacheDir() (string, error) {
 }
 
 func cacheDirPath(executablePath, installRoot string) string {
+	if root, ok := fs.UserDataRoot(); ok {
+		return filepath.Join(root, ".cache", httpCacheRoot)
+	}
 	installRoot = settings.Expand(strings.TrimSpace(installRoot))
 	if installRoot != "" {
 		return filepath.Join(filepath.Dir(filepath.Clean(installRoot)), ".cache", httpCacheRoot)

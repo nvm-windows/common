@@ -50,7 +50,7 @@ func TestIsRiskyManagedPath_NestedUnderDriveRootChild(t *testing.T) {
 
 func TestHasRiskyDataRootLayout(t *testing.T) {
 	if !HasRiskyDataRootLayout(`C:\nvm`) {
-		t.Fatal("expected install root on drive root to be flagged")
+		t.Fatal("expected install root directly under drive root to be flagged")
 	}
 	if HasRiskyDataRootLayout(filepath.Join(os.Getenv("LOCALAPPDATA"), "Author Software", "nvm", "installs")) {
 		t.Fatal("expected default LocalAppData layout to be safe")
