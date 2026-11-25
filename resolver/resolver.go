@@ -24,7 +24,7 @@ var OnLegacyLatestResolved func(resolved string)
 
 // FindVersion returns the best matching version for a given version string, along with its npm version.
 // The input version string can be a full version (e.g. "v16.13.0"), a major.minor (e.g. "16.13"), or just a major version (e.g. "16").
-// Aliases "latest", "lts", "lts/<name>", and "alpha" are also accepted.
+// Aliases "latest", "lts", "lts/<name>", "lts/-N", and "alpha" are also accepted.
 // The function will attempt to find the best match based on the available versions.
 func Find(version string) (string, string, error) {
 	// Resolve aliases before normal version parsing.
@@ -177,7 +177,7 @@ func LTSName(version string) string {
 }
 
 // alias resolves a named alias to a concrete version string.
-// Supported aliases: "latest", "lts", "lts/<name>", "alpha", "default", "current".
+// Supported aliases: "latest", "lts", "lts/<name>", "lts/-N", "alpha", "default", "current".
 func alias(version string) (string, error) {
 	v := strings.ToLower(strings.TrimSpace(version))
 
@@ -230,6 +230,16 @@ func alias(version string) (string, error) {
 
 	if strings.HasPrefix(v, "lts/") {
 		name := strings.TrimPrefix(v, "lts/")
+		if n, isOffset, err := parseLTSOffset(name); isOffset {
+			if err != nil {
+				return "", err
+			}
+			all, listErr := List()
+			if listErr != nil {
+				return "", listErr
+			}
+			return resolveLTSOffset(all, n)
+		}
 		all, err := List()
 		if err != nil {
 			return "", err
@@ -254,6 +264,74 @@ func alias(version string) (string, error) {
 	}
 
 	return "", fmt.Errorf("unknown alias: %s", version)
+}
+
+// ltsLine is one unique LTS release line from the catalog (newest first).
+type ltsLine struct {
+	name    string
+	version string
+}
+
+// parseLTSOffset inspects the part after "lts/". When name starts with "-",
+// it is offset syntax only (never a codename). ok is true on the offset path.
+// err is set for invalid offset forms (empty, non-digits, N < 1).
+func parseLTSOffset(name string) (n int, ok bool, err error) {
+	if !strings.HasPrefix(name, "-") {
+		return 0, false, nil
+	}
+	rest := name[1:]
+	if rest == "" {
+		return 0, true, fmt.Errorf("invalid LTS offset %q: use lts/-N where N is a positive integer (for example lts/-1)", "lts/"+name)
+	}
+	for _, r := range rest {
+		if r < '0' || r > '9' {
+			return 0, true, fmt.Errorf("invalid LTS offset %q: use lts/-N where N is a positive integer (for example lts/-1)", "lts/"+name)
+		}
+	}
+	n, convErr := strconv.Atoi(rest)
+	if convErr != nil || n < 1 {
+		return 0, true, fmt.Errorf("invalid LTS offset %q: use lts/-N where N is a positive integer (for example lts/-1)", "lts/"+name)
+	}
+	return n, true, nil
+}
+
+// uniqueLTSLines walks catalog rows (newest first) and keeps the first row
+// per LTS codename. Empty LTS cells are skipped.
+func uniqueLTSLines(rows [][]string) []ltsLine {
+	seen := make(map[string]struct{})
+	var lines []ltsLine
+	for _, ver := range rows {
+		if len(ver) < 4 {
+			continue
+		}
+		codename := strings.TrimSpace(ver[3])
+		if codename == "" {
+			continue
+		}
+		key := strings.ToLower(codename)
+		if _, exists := seen[key]; exists {
+			continue
+		}
+		seen[key] = struct{}{}
+		lines = append(lines, ltsLine{name: codename, version: ver[0]})
+	}
+	return lines
+}
+
+// resolveLTSOffset returns the version for the Nth previous LTS line
+// (N >= 1). Index 0 is the current LTS line; lts/-1 is lines[1].
+func resolveLTSOffset(rows [][]string, n int) (string, error) {
+	lines := uniqueLTSLines(rows)
+	if len(lines) == 0 {
+		return "", fmt.Errorf("no LTS version found")
+	}
+	if n < 1 || n >= len(lines) {
+		if len(lines) == 1 {
+			return "", fmt.Errorf("LTS offset -%d is out of range: only %d LTS line(s) available", n, len(lines))
+		}
+		return "", fmt.Errorf("LTS offset -%d is out of range: only %d LTS line(s) available (use lts/-1 … lts/-%d)", n, len(lines), len(lines)-1)
+	}
+	return lines[n].version, nil
 }
 
 // latestStable returns the newest index.tab row that is not a prerelease
@@ -316,7 +394,7 @@ func latestAlpha(versions [][]string) (string, error) {
 
 // Resolve returns the best concrete Node.js version for the given input.
 // It accepts:
-//   - Named aliases: "latest", "lts", "lts/<name>"
+//   - Named aliases: "latest", "lts", "lts/<name>", "lts/-N"
 //   - Exact or partial versions: "18", "18.20", "18.20.1", "v18.20.1"
 //   - Semver range constraints from package.json: "^18", ">=16", "~20.1", "*", "18.x"
 func Resolve(version string) (string, error) {
@@ -338,7 +416,7 @@ func Resolve(version string) (string, error) {
 	}
 
 	// Handle reserved aliases and plain/partial versions via Find, which covers
-	// "latest", "lts", "lts/<name>", "alpha", "18", "18.20", "18.20.1", "v18.20.1".
+	// "latest", "lts", "lts/<name>", "lts/-N", "alpha", "18", "18.20", "18.20.1", "v18.20.1".
 	resolved, _, err := Find(v)
 	if err == nil {
 		return resolved, nil

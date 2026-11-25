@@ -1,6 +1,9 @@
 package resolver
 
-import "testing"
+import (
+	"strings"
+	"testing"
+)
 
 func TestFindExactVersionSkipsCatalog(t *testing.T) {
 	for _, spec := range []string{"24.22.1", "v24.22.1"} {
@@ -207,5 +210,119 @@ func TestLatestInstalledAlphaIgnoresStableAndRC(t *testing.T) {
 func TestLatestInstalledAlphaNone(t *testing.T) {
 	if _, ok := LatestInstalledAlpha([]string{"27.0.0", "27.0.0-rc.1"}); ok {
 		t.Fatal("expected no alpha match")
+	}
+}
+
+func fixtureLTSRows() [][]string {
+	// Newest-first catalog: two patches per LTS line plus non-LTS rows.
+	return [][]string{
+		{"24.11.0", "2026-10-28", "11.6.0", "Krypton", "-"},
+		{"24.10.0", "2026-09-01", "11.5.0", "Krypton", "-"},
+		{"23.0.0", "2026-08-01", "11.0.0", "", "-"},
+		{"22.20.0", "2026-07-01", "10.9.0", "Jod", "-"},
+		{"22.19.0", "2026-06-01", "10.8.0", "Jod", "-"},
+		{"20.19.0", "2026-05-01", "10.8.0", "Iron", "-"},
+		{"20.18.0", "2026-04-01", "10.7.0", "Iron", "-"},
+	}
+}
+
+func TestUniqueLTSLinesNewestPerCodename(t *testing.T) {
+	lines := uniqueLTSLines(fixtureLTSRows())
+	if len(lines) != 3 {
+		t.Fatalf("uniqueLTSLines len = %d, want 3", len(lines))
+	}
+	want := []ltsLine{
+		{name: "Krypton", version: "24.11.0"},
+		{name: "Jod", version: "22.20.0"},
+		{name: "Iron", version: "20.19.0"},
+	}
+	for i, got := range lines {
+		if got.name != want[i].name || got.version != want[i].version {
+			t.Fatalf("lines[%d] = %+v, want %+v", i, got, want[i])
+		}
+	}
+}
+
+func TestResolveLTSOffsetHappyPath(t *testing.T) {
+	rows := fixtureLTSRows()
+	got, err := resolveLTSOffset(rows, 1)
+	if err != nil {
+		t.Fatalf("resolveLTSOffset(1) error = %v", err)
+	}
+	if got != "22.20.0" {
+		t.Fatalf("resolveLTSOffset(1) = %q, want 22.20.0", got)
+	}
+	got, err = resolveLTSOffset(rows, 2)
+	if err != nil {
+		t.Fatalf("resolveLTSOffset(2) error = %v", err)
+	}
+	if got != "20.19.0" {
+		t.Fatalf("resolveLTSOffset(2) = %q, want 20.19.0", got)
+	}
+}
+
+func TestResolveLTSOffsetOutOfRange(t *testing.T) {
+	rows := fixtureLTSRows() // 3 unique lines → max offset -2
+	_, err := resolveLTSOffset(rows, 99)
+	if err == nil {
+		t.Fatal("expected out-of-range error")
+	}
+	if !strings.Contains(err.Error(), "out of range") {
+		t.Fatalf("error = %q, want out of range", err)
+	}
+	if !strings.Contains(err.Error(), "lts/-2") {
+		t.Fatalf("error = %q, want hint up to lts/-2", err)
+	}
+}
+
+func TestResolveLTSOffsetNoLTS(t *testing.T) {
+	_, err := resolveLTSOffset([][]string{{"23.0.0", "", "", "", ""}}, 1)
+	if err == nil || !strings.Contains(err.Error(), "no LTS version found") {
+		t.Fatalf("error = %v, want no LTS version found", err)
+	}
+}
+
+func TestParseLTSOffsetValid(t *testing.T) {
+	n, ok, err := parseLTSOffset("-1")
+	if !ok || err != nil || n != 1 {
+		t.Fatalf("parseLTSOffset(-1) = %d, %v, %v", n, ok, err)
+	}
+	n, ok, err = parseLTSOffset("-12")
+	if !ok || err != nil || n != 12 {
+		t.Fatalf("parseLTSOffset(-12) = %d, %v, %v", n, ok, err)
+	}
+}
+
+func TestParseLTSOffsetCodenamePath(t *testing.T) {
+	_, ok, err := parseLTSOffset("iron")
+	if ok || err != nil {
+		t.Fatalf("parseLTSOffset(iron) ok=%v err=%v, want codename path", ok, err)
+	}
+}
+
+func TestParseLTSOffsetInvalidSyntax(t *testing.T) {
+	cases := []string{"-0", "-", "-1x", "--1", "-10+1"}
+	for _, name := range cases {
+		_, ok, err := parseLTSOffset(name)
+		if !ok {
+			t.Fatalf("parseLTSOffset(%q) ok=false, want offset path", name)
+		}
+		if err == nil {
+			t.Fatalf("parseLTSOffset(%q) expected syntax error", name)
+		}
+		if !strings.Contains(err.Error(), "invalid LTS offset") {
+			t.Fatalf("parseLTSOffset(%q) error = %q, want invalid LTS offset", name, err)
+		}
+		if !strings.Contains(err.Error(), "lts/-1") {
+			t.Fatalf("parseLTSOffset(%q) error = %q, want example lts/-1", name, err)
+		}
+	}
+}
+
+func TestParseLTSOffsetNeverCodenameForDashNames(t *testing.T) {
+	// Regression: lts/-1 must not fall through to EqualFold codename lookup.
+	_, ok, err := parseLTSOffset("-1")
+	if !ok || err != nil {
+		t.Fatalf("parseLTSOffset(-1) = ok=%v err=%v", ok, err)
 	}
 }
